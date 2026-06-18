@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: "Tabela dimensão de clientes limpos e validados vindo do domínio CRM"
+    columns:
+      - name: customer_id
+        description: "Chave primária do cliente"
+        tests:
+          - unique
+          - not_null
+      - name: status
+        description: "Status do cadastro"
+        tests:
+          - accepted_values:
+              values: ['active', 'inactive']
+
+  - name: fct_sales
+    description: "Tabela fato de vendas consolidada vinda do domínio E-Commerce, enriquecida com dados cadastrais"
+    columns:
+      - name: sale_id
+        description: "Chave primária da venda"
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: "Chave estrangeira mapeando para a dimensão de clientes"
+        tests:
+          - not_null
+      - name: amount
+        description: "Valor total da venda"
+
+  - name: dm_monthly_kpis
+    description: "Mart analítico contendo métricas e agregações financeiras consolidadas por mês"
+    columns:
+      - name: sales_month
+        description: "Mês da agregação"
+        tests:
+          - unique
+          - not_null

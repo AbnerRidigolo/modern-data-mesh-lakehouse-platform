@@ -1,0 +1,11 @@
+analytics_dw:
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DB_PATH', '/opt/airflow/storage/analytics.duckdb') }}"
+      extensions:
+        - delta
+        - parquet
+      settings:
+        timezone: UTC
+  target: dev

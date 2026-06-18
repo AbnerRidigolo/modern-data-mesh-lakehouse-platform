@@ -1,0 +1,38 @@
+# Virtual Environment
+.venv/
+env/
+ENV/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Storage (Mock data, Delta Lake tables, DuckDB files)
+storage/
+
+# Apache Spark & Derby
+spark-warehouse/
+metastore_db/
+derby.log
+
+# dbt
+target/
+dbt_packages/
+dbt_modules/
+logs/
+*.db
+
+# IDEs
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# OS Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
