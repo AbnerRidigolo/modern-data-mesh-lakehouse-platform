@@ -8,28 +8,30 @@ Este projeto implementa uma **Plataforma de Dados de Nível de Excelência (Staf
 
 ```mermaid
 graph TD
-    subgraph Orquestração (Airflow no Docker)
-        FLOW[Prefect / Airflow Workflows]
+    subgraph Orquestracao ["Orquestração (Airflow no Docker)"]
+        FLOW["Prefect / Airflow Workflows"]
     end
 
-    subgraph Produtores (Data Mesh)
-        RAW_S[Raw Sales] -->|PySpark / Big Data| DELTA_S[(Delta Lake: Sales)]
-        RAW_C[Raw Customers] -->|Polars / Fast Memory| DELTA_C[(Delta Lake: Customers)]
+    subgraph Produtores ["Produtores (Data Mesh)"]
+        RAW_S["Raw Sales"] -->|PySpark / Big Data| DELTA_S[("Delta Lake: Sales")]
+        RAW_C["Raw Customers"] -->|Polars / Fast Memory| DELTA_C[("Delta Lake: Customers")]
     end
 
-    subgraph Data Warehousing (dbt + DuckDB)
-        DELTA_S & DELTA_C --> DBT[dbt Core + DuckDB]
-        DBT --> DW[(Warehouse: Kimball Star Schema)]
+    subgraph DW_Layer ["Data Warehousing (dbt + DuckDB)"]
+        DELTA_S --> DBT["dbt Core + DuckDB"]
+        DELTA_C --> DBT
+        DBT --> DW[("Warehouse: Kimball Star Schema")]
     end
 
-    subgraph Camada de Servimento (DaaS)
-        DW --> API[FastAPI Gateway]
-        API -->|Cache Lookup| REDIS[(Redis Cache)]
+    subgraph Servimento ["Camada de Servimento (DaaS)"]
+        DW --> API["FastAPI Gateway"]
+        API -->|Cache Lookup| REDIS[("Redis Cache")]
     end
 
-    subgraph Portal de Governança & BI
-        API --> PORTAL[Streamlit Portal]
-        DELTA_S & DELTA_C --> PORTAL
+    subgraph Portal ["Portal de Governança & BI"]
+        API --> PORTAL["Streamlit Portal"]
+        DELTA_S --> PORTAL
+        DELTA_C --> PORTAL
     end
 
     FLOW --> RAW_S
