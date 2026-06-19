@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import duckdb
 from fastapi import FastAPI, HTTPException
@@ -147,3 +148,70 @@ def get_customers():
 def clear_cache():
     cache.clear()
     return {"message": "Todos os caches limpos."}
+
+# Dynamically locate Model Registry directory
+model_dir_local = os.path.join(base_dir, "storage", "model_registry")
+model_dir_container = "/opt/airflow/storage/model_registry"
+model_dir = model_dir_container if os.path.exists(model_dir_container) else model_dir_local
+
+@app.get("/api/v1/predict/optimal-price")
+def get_optimal_price(product_name: str = None):
+    # If product_name is provided, use it to construct cache key
+    cache_key = f"optimal_price_{product_name.lower().replace(' ', '_')}" if product_name else "optimal_price_all"
+    
+    # Try getting from cache
+    cached_val = cache.get(cache_key)
+    if cached_val is not None:
+        return {
+            "source": "cache",
+            "data": cached_val
+        }
+        
+    # Read metadata file
+    metadata_file = os.path.join(model_dir, "pricing_metadata.json")
+    if not os.path.exists(metadata_file):
+        raise HTTPException(
+            status_code=404, 
+            detail="Metadados de precificação não encontrados. O modelo de ML precisa ser treinado primeiro."
+        )
+        
+    try:
+        with open(metadata_file, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+            
+        optimal_prices = metadata.get("optimal_prices", {})
+        
+        if product_name:
+            # Case-insensitive lookup
+            matched_data = None
+            for name, details in optimal_prices.items():
+                if name.lower() == product_name.lower():
+                    matched_data = {
+                        "product_name": name,
+                        **details
+                    }
+                    break
+            if not matched_data:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Produto '{product_name}' não encontrado nos resultados de otimização."
+                )
+            
+            # Cache the response
+            cache.set(cache_key, matched_data, ttl_seconds=60)
+            return {
+                "source": "database_json",
+                "data": matched_data
+            }
+        else:
+            # Cache the response for all
+            cache.set(cache_key, optimal_prices, ttl_seconds=60)
+            return {
+                "source": "database_json",
+                "data": optimal_prices
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao obter preço ótimo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

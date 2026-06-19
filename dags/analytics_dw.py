@@ -51,5 +51,16 @@ dbt_task = BashOperator(
     dag=dag,
 )
 
+# 4. ML Price Elasticity & Recommender Training Task
+def trigger_ml_training():
+    from domains.ml_pricing.train import train_model
+    train_model()
+
+ml_task = PythonOperator(
+    task_id='ml_pricing_training',
+    python_callable=trigger_ml_training,
+    dag=dag,
+)
+
 # Lineage & Dependency Flow
-[crm_task, ecommerce_task] >> dbt_task
+[crm_task, ecommerce_task] >> dbt_task >> ml_task

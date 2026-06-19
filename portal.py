@@ -2,6 +2,7 @@ import os
 import json
 import requests
 import pandas as pd
+import numpy as np
 import streamlit as st
 import time
 from deltalake import DeltaTable
@@ -58,10 +59,11 @@ st.sidebar.markdown("""
 """)
 
 # Create Tabs
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "📊 BI Dashboard & Performance Cache",
     "🕰️ Delta Lake Time Travel & Auditoria",
-    "🕸️ Catálogo Data Mesh & Contratos"
+    "🕸️ Catálogo Data Mesh & Contratos",
+    "📈 MLOps: Precificação Dinâmica"
 ])
 
 # ==========================================
@@ -289,3 +291,160 @@ with tab3:
                     st.warning("Falha ao decodificar JSON do arquivo de erro. Exibindo conteúdo bruto:")
                     ef.seek(0)
                     st.text(ef.read())
+
+# ==========================================
+# TAB 4: MLOps: Precificação Dinâmica
+# ==========================================
+with tab4:
+    st.header("📈 Otimização de Elasticidade e Precificação Dinâmica")
+    st.markdown("""
+    Esta tela utiliza o modelo de Machine Learning (**Random Forest Regressor**) treinado e registrado no Lakehouse para simular a resposta de demanda de cada produto e calcular o preço ideal de maximização de faturamento.
+    """)
+    
+    metadata_path = os.path.join(base_dir, "storage", "model_registry", "pricing_metadata.json")
+    model_path = os.path.join(base_dir, "storage", "model_registry", "pricing_model.joblib")
+    
+    if not os.path.exists(metadata_path) or not os.path.exists(model_path):
+        st.warning("⚠️ O modelo de ML e os metadados de otimização ainda não foram gerados. Por favor, execute a DAG do Airflow com sucesso.")
+    else:
+        # Load metadata and model
+        with open(metadata_path, "r", encoding="utf-8") as mf:
+            metadata = json.load(mf)
+            
+        import joblib
+        model = joblib.load(model_path)
+        
+        # Display Model Metrics in premium cards
+        metrics = metadata.get("model_metrics", {})
+        col_t1, col_t2, col_t3 = st.columns(3)
+        with col_t1:
+            st.metric("Acurácia do Modelo (Test R²)", f"{metrics.get('r2_score', 0)*100:.2f}%")
+        with col_t2:
+            st.metric("Erro Médio Absoluto (MAE)", f"{metrics.get('mae', 0):.2f} unidades")
+        with col_t3:
+            trained_at = datetime.fromisoformat(metadata.get("last_trained")).strftime("%d/%m/%Y %H:%M:%S")
+            st.metric("Último Retreino do Modelo", trained_at)
+            
+        st.markdown("---")
+        
+        # Product Selection
+        optimal_prices = metadata.get("optimal_prices", {})
+        products_list = list(optimal_prices.keys())
+        selected_prod = st.selectbox("Escolha um produto para simulação e otimização:", products_list)
+        
+        if selected_prod:
+            prod_details = optimal_prices[selected_prod]
+            
+            # Show optimal price details
+            st.subheader(f"🎯 Recomendação de Preço Ótimo: {selected_prod}")
+            col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+            with col_d1:
+                st.metric("Preço Praticado Atual", f"R$ {prod_details['base_price']:,.2f}")
+            with col_d2:
+                # Calculate delta for styling
+                price_delta = prod_details['optimal_price'] - prod_details['base_price']
+                st.metric(
+                    "Preço Ótimo Sugerido (P*)", 
+                    f"R$ {prod_details['optimal_price']:,.2f}",
+                    delta=f"R$ {price_delta:,.2f}" if price_delta != 0 else None
+                )
+            with col_d3:
+                st.metric("Preço Médio Concorrente", f"R$ {prod_details['competitor_price']:,.2f}")
+            with col_d4:
+                st.metric(
+                    "Lift Estimado de Faturamento", 
+                    f"+{prod_details['revenue_lift_pct']:.2f}%",
+                    delta=f"R$ {prod_details['projected_daily_revenue'] - prod_details['current_daily_revenue']:,.2f} / dia"
+                )
+                
+            st.markdown("---")
+            
+            # Interactive Simulator
+            st.subheader("🎮 Simulador de Preço e Demanda Interativo")
+            st.markdown("Ajuste o controle deslizante abaixo para ver a demanda projetada e o faturamento simulado em tempo real.")
+            
+            base_price = prod_details['base_price']
+            min_slider = float(max(10.0, base_price * 0.4))
+            max_slider = float(base_price * 1.6)
+            
+            sim_price = st.slider(
+                "Defina o Preço Simulado (R$):", 
+                min_value=min_slider, 
+                max_value=max_slider, 
+                value=float(base_price), 
+                step=5.0
+            )
+            
+            is_weekend_sim = st.checkbox("Simular Vendas no Fim de Semana?")
+            
+            # Reconstruct the feature list and make prediction
+            feature_cols = metadata["feature_columns"]
+            product_cols = metadata["product_one_hot_columns"]
+            
+            # Prepare row for prediction
+            row = {
+                "price": sim_price,
+                "competitor_price": prod_details['competitor_price'],
+                "day_of_week": 6 if is_weekend_sim else 3,
+                "is_weekend": 1 if is_weekend_sim else 0
+            }
+            for col in product_cols:
+                row[col] = 1 if col == f"prod_{selected_prod}" else 0
+                
+            sim_df = pd.DataFrame([row])[feature_cols]
+            sim_demand = float(model.predict(sim_df)[0])
+            sim_revenue = sim_price * sim_demand
+            
+            # Display simulated results in columns
+            col_s1, col_s2, col_s3 = st.columns(3)
+            with col_s1:
+                st.metric("Demanda Diária Projetada", f"{sim_demand:.2f} unidades")
+            with col_s2:
+                st.metric("Faturamento Diário Projetado", f"R$ {sim_revenue:,.2f}")
+            with col_s3:
+                current_rev = prod_details['current_daily_revenue']
+                sim_lift = ((sim_revenue - current_rev) / current_rev) * 100 if current_rev > 0 else 0.0
+                st.metric(
+                    "Lift Comparado ao Baseline", 
+                    f"{sim_lift:+.2f}%", 
+                    delta=f"R$ {sim_revenue - current_rev:,.2f} / dia"
+                )
+                
+            st.markdown("---")
+            
+            # Curvas de Demanda e Faturamento
+            st.subheader("📊 Curvas de Elasticidade de Preço")
+            
+            # Generate a dense range of prices for the charts
+            chart_prices = np.linspace(min_slider, max_slider, 50)
+            chart_data = []
+            
+            for p in chart_prices:
+                r_chart = {
+                    "price": p,
+                    "competitor_price": prod_details['competitor_price'],
+                    "day_of_week": 6 if is_weekend_sim else 3,
+                    "is_weekend": 1 if is_weekend_sim else 0
+                }
+                for col in product_cols:
+                    r_chart[col] = 1 if col == f"prod_{selected_prod}" else 0
+                chart_data.append(r_chart)
+                
+            chart_df = pd.DataFrame(chart_data)[feature_cols]
+            pred_demands = model.predict(chart_df)
+            pred_revenues = chart_prices * pred_demands
+            
+            # Combine into a dataframe for graphing
+            curves_df = pd.DataFrame({
+                "Preço (R$)": chart_prices,
+                "Demanda Projetada (Q)": pred_demands,
+                "Faturamento Projetado (R$)": pred_revenues
+            }).set_index("Preço (R$)")
+            
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                st.markdown("**📉 Curva de Demanda (Preço vs. Quantidade Vendida)**")
+                st.line_chart(curves_df["Demanda Projetada (Q)"], color="#ef4444")
+            with col_g2:
+                st.markdown("**💰 Curva de Receita (Preço vs. Faturamento Esperado)**")
+                st.line_chart(curves_df["Faturamento Projetado (R$)"], color="#10b981")

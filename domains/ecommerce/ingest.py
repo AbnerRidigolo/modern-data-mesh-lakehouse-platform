@@ -97,6 +97,7 @@ def run_ingestion():
         df.write \
             .format("delta") \
             .mode("append") \
+            .option("mergeSchema", "true") \
             .partitionBy("status") \
             .save(delta_path)
         logger.info("Escrita no Delta Lake via PySpark concluída com sucesso.")

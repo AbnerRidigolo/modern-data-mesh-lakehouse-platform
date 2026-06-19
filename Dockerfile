@@ -23,4 +23,6 @@ RUN pip install --no-cache-dir \
     pydantic==2.10.4 \
     pyspark==3.5.3 \
     delta-spark==3.2.1 \
-    redis==5.2.1
+    redis==5.2.1 \
+    scikit-learn==1.6.0 \
+    joblib==1.4.2

@@ -1,11 +1,13 @@
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
+from typing import Optional
 
 class SaleContract(BaseModel):
     sale_id: int = Field(..., description="ID da transação de venda")
     customer_id: int = Field(..., description="ID do cliente (chave estrangeira)")
     product: str = Field(..., min_length=2, description="Nome do produto vendido")
     amount: float = Field(..., description="Valor total da venda (deve ser positivo)")
+    competitor_price: Optional[float] = Field(None, description="Preço do concorrente")
     status: str = Field(..., description="Status do processamento da venda")
     sale_date: datetime = Field(..., description="Data/hora em que a venda foi realizada")
 

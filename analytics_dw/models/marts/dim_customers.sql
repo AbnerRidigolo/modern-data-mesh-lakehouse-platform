@@ -1,5 +1,12 @@
 WITH customers AS (
     SELECT * FROM {{ ref('stg_customers') }}
+),
+
+deduped AS (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY created_at DESC) as rn
+    FROM customers
 )
 
 SELECT
@@ -10,4 +17,5 @@ SELECT
     status,
     -- Add helper flag for active users
     CASE WHEN status = 'active' THEN 1 ELSE 0 END AS is_active_flag
-FROM customers
+FROM deduped
+WHERE rn = 1
