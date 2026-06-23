@@ -551,6 +551,62 @@ with tab5:
     e pesquisa por similaridade de cosseno no banco de dados vetorial **Qdrant**, permitindo encontrar produtos mesmo sem correspondência exata de palavras-chave.
     """)
     
+    # ----------------------------------------------------
+    # Search Analytics Expander
+    # ----------------------------------------------------
+    with st.expander("📊 Observabilidade & Search Analytics (Real-Time)"):
+        try:
+            log_resp = requests.get(f"{API_URL}/api/v1/search/logs")
+            if log_resp.status_code == 200:
+                logs_data = log_resp.json()
+                if not logs_data:
+                    st.info("Nenhuma busca registrada nos logs ainda.")
+                else:
+                    df_logs = pd.DataFrame(logs_data)
+                    
+                    # 1. Calcular Métricas
+                    total_searches = len(df_logs)
+                    cache_hits = len(df_logs[df_logs["source"] == "cache"])
+                    hit_rate = (cache_hits / total_searches) * 100 if total_searches > 0 else 0.0
+                    avg_latency = df_logs["latency_seconds"].mean()
+                    
+                    # Exibir Métricas em colunas
+                    col_l1, col_l2, col_l3 = st.columns(3)
+                    with col_l1:
+                        st.metric("Total de Buscas", f"{total_searches}", help="Número total de buscas registradas em JSONL.")
+                    with col_l2:
+                        st.metric("Taxa de Cache Hit (Redis)", f"{hit_rate:.1f}%", delta=f"{cache_hits} acertos")
+                    with col_l3:
+                        st.metric("Latência Média", f"{avg_latency:.4f}s", help="Tempo médio de resposta do pipeline de busca.")
+                    
+                    # 2. Identificar Catalog Gaps (queries com score baixo)
+                    st.markdown("### ⚠️ Catalog Gaps (Buscas sem correspondência ideal)")
+                    gap_threshold = st.slider(
+                        "Ajustar Limite de Similaridade Mínima para Gap (%):", 
+                        min_value=0.0, 
+                        max_value=1.0, 
+                        value=0.60, 
+                        step=0.01,
+                        help="Consultas com pontuação abaixo deste limite serão marcadas como lacunas de catálogo (Catalog Gaps)."
+                    )
+                    gap_queries = df_logs[df_logs["top_score"] < gap_threshold]
+                    if gap_queries.empty:
+                        st.success(f"✅ Excelente! Todas as buscas recentes tiveram correspondência acima de {gap_threshold * 100:.1f}%.")
+                    else:
+                        st.warning(f"Foram detectadas {len(gap_queries)} buscas com similaridade abaixo de {gap_threshold * 100:.1f}%. Isso pode indicar demandas por produtos não mapeados.")
+                        st.dataframe(
+                            gap_queries[["timestamp", "query", "top_match", "top_score"]],
+                            use_container_width=True
+                        )
+                    
+                    # 3. Tabela Completa de Logs
+                    st.markdown("### 📜 Histórico Recente de Buscas")
+                    st.dataframe(df_logs, use_container_width=True)
+            else:
+                st.error("Erro ao carregar logs da API.")
+        except Exception as e:
+            st.error(f"Erro ao carregar search analytics: {e}")
+            
     # Exemplo de buscas rápidas
     st.markdown("💡 **Buscas Sugeridas:**")
     col_sug1, col_sug2, col_sug3, col_sug4 = st.columns(4)

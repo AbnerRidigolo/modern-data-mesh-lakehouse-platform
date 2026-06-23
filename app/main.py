@@ -233,8 +233,30 @@ def get_embedding_model():
         _embedding_model = TextEmbedding()
     return _embedding_model
 
+def log_search_event(query: str, latency_seconds: float, source: str, top_match: str = None, top_score: float = 0.0):
+    import datetime
+    logs_dir = os.path.join(base_dir, "storage", "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    log_file = os.path.join(logs_dir, "search_logs.jsonl")
+    
+    log_entry = {
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+        "query": query,
+        "latency_seconds": round(latency_seconds, 4),
+        "source": source,
+        "top_match": top_match or "Nenhum",
+        "top_score": round(top_score, 4)
+    }
+    
+    try:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry) + "\n")
+    except Exception as e:
+        logger.error(f"Erro ao salvar log de busca: {e}")
+
 @app.get("/api/v1/products/search")
 def search_products(query: str):
+    start_time = time.time()
     if not query:
         raise HTTPException(status_code=400, detail="O parâmetro 'query' não pode ser vazio.")
         
@@ -243,14 +265,18 @@ def search_products(query: str):
     # Tenta obter do cache
     cached_val = cache.get(cache_key)
     if cached_val is not None:
+        latency = time.time() - start_time
+        top_match = cached_val[0].get("name") if cached_val else "Nenhum"
+        top_score = cached_val[0].get("score") if cached_val else 0.0
+        log_search_event(query, latency, "cache", top_match, top_score)
+        
         return {
             "source": "cache",
+            "query_time_seconds": round(latency, 4),
             "data": cached_val
         }
         
     try:
-        start_time = time.time()
-        
         # 1. Obter modelo de embedding e vetorizar query
         model = get_embedding_model()
         query_vector = list(model.embed([query]))[0].tolist()
@@ -268,9 +294,11 @@ def search_products(query: str):
         
         if not exists:
             # Caso a coleção não exista, retorna uma lista vazia
+            latency = time.time() - start_time
+            log_search_event(query, latency, "database_qdrant", "Nenhum", 0.0)
             return {
                 "source": "database_qdrant",
-                "query_time_seconds": round(time.time() - start_time, 4),
+                "query_time_seconds": round(latency, 4),
                 "data": []
             }
             
@@ -316,6 +344,11 @@ def search_products(query: str):
         query_time = time.time() - start_time
         logger.info(f"Busca vetorial executada em {query_time:.4f}s. Salvando no cache.")
         
+        # Log search event
+        top_match = results[0].get("name") if results else "Nenhum"
+        top_score = results[0].get("score") if results else 0.0
+        log_search_event(query, query_time, "database_qdrant", top_match, top_score)
+        
         cache.set(cache_key, results, ttl_seconds=120)
         
         return {
@@ -325,4 +358,21 @@ def search_products(query: str):
         }
     except Exception as e:
         logger.error(f"Erro na busca vetorial: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/search/logs")
+def get_search_logs(limit: int = 50):
+    log_file = os.path.join(base_dir, "storage", "logs", "search_logs.jsonl")
+    if not os.path.exists(log_file):
+        return []
+        
+    try:
+        logs = []
+        with open(log_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    logs.append(json.loads(line))
+        return logs[::-1][:limit]
+    except Exception as e:
+        logger.error(f"Erro ao ler logs de busca: {e}")
         raise HTTPException(status_code=500, detail=str(e))
