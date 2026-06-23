@@ -87,5 +87,16 @@ qdrant_task = PythonOperator(
     dag=dag,
 )
 
+# 7. Data Quality Check Task
+def trigger_data_quality():
+    from domains.ml_pricing.data_quality import main as run_dq
+    run_dq()
+
+dq_task = PythonOperator(
+    task_id='data_quality_check',
+    python_callable=trigger_data_quality,
+    dag=dag,
+)
+
 # Lineage & Dependency Flow
-[crm_task, ecommerce_task] >> dbt_task >> [ml_task, drift_task, qdrant_task]
+[crm_task, ecommerce_task] >> dbt_task >> [ml_task, drift_task, qdrant_task, dq_task]

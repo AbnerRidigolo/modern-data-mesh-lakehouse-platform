@@ -376,3 +376,36 @@ def get_search_logs(limit: int = 50):
     except Exception as e:
         logger.error(f"Erro ao ler logs de busca: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/data-quality/report")
+def get_data_quality_report():
+    report_file = os.path.join(base_dir, "storage", "data_quality", "dq_report.json")
+    if not os.path.exists(report_file):
+        raise HTTPException(
+            status_code=404, 
+            detail="Relatório de qualidade de dados não encontrado. Execute a pipeline primeiro."
+        )
+        
+    try:
+        with open(report_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Erro ao ler relatório de qualidade: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/data-quality/history")
+def get_data_quality_history(limit: int = 30):
+    history_file = os.path.join(base_dir, "storage", "data_quality", "dq_history.jsonl")
+    if not os.path.exists(history_file):
+        return []
+        
+    try:
+        history = []
+        with open(history_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    history.append(json.loads(line))
+        return history[-limit:]
+    except Exception as e:
+        logger.error(f"Erro ao ler histórico de qualidade: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

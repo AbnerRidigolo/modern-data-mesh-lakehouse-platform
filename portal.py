@@ -122,12 +122,13 @@ st.sidebar.markdown("""
 """)
 
 # Create Tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 BI Dashboard & Performance Cache",
     "🕰️ Delta Lake Time Travel & Auditoria",
     "🕸️ Catálogo Data Mesh & Contratos",
     "📈 MLOps: Precificação Dinâmica",
-    "🔍 Busca Semântica Vetorial"
+    "🔍 Busca Semântica Vetorial",
+    "📊 Observabilidade de Data Quality"
 ])
 
 # ==========================================
@@ -764,3 +765,101 @@ with tab5:
                 st.error(f"Erro na requisição à API: {response.text}")
         except Exception as e:
             st.error(f"Erro ao conectar com API: {e}")
+
+# ==========================================
+# TAB 6: Observabilidade de Data Quality
+# ==========================================
+with tab6:
+    st.header("📊 Observabilidade de Qualidade de Dados (Lote)")
+    st.markdown("""
+    Esta tela exibe o relatório de conformidade gerado pelas checagens de **Data Quality** executadas no orquestrador (Airflow). 
+    As validações englobam testes estatísticos de distribuição, completude de dados e anomalias de volume histórico.
+    """)
+    
+    try:
+        dq_resp = requests.get(f"{API_URL}/api/v1/data-quality/report")
+        if dq_resp.status_code == 200:
+            report_data = dq_resp.json()
+            score = report_data.get("compliance_score", 0.0)
+            status_geral = report_data.get("status", "Failed")
+            
+            # Cabeçalho de Conformidade Geral
+            col_dq1, col_dq2, col_dq3 = st.columns(3)
+            with col_dq1:
+                if status_geral == "Passed":
+                    st.success(f"🟢 **Status Geral: PASSED**")
+                else:
+                    st.error(f"🔴 **Status Geral: FAILED**")
+            with col_dq2:
+                st.metric("Score de Conformidade", f"{score}%", delta="Objetivo: 100%")
+            with col_dq3:
+                last_run = report_data.get("timestamp", "")
+                if last_run:
+                    try:
+                        last_run_dt = datetime.fromisoformat(last_run.replace("Z", "")).strftime("%d/%m/%Y %H:%M:%S")
+                    except Exception:
+                        last_run_dt = last_run
+                    st.metric("Última Execução", last_run_dt)
+                    
+            st.markdown("---")
+            
+            # Histórico de Rodadas (Gráfico de Linha)
+            st.subheader("📈 Linha do Tempo de Qualidade de Dados")
+            hist_resp = requests.get(f"{API_URL}/api/v1/data-quality/history")
+            if hist_resp.status_code == 200:
+                hist_data = hist_resp.json()
+                if hist_data:
+                    df_hist = pd.DataFrame(hist_data)
+                    df_hist["Data/Hora"] = pd.to_datetime(df_hist["timestamp"])
+                    df_hist = df_hist.sort_values(by="Data/Hora")
+                    
+                    chart_df = df_hist[["Data/Hora", "compliance_score"]].set_index("Data/Hora")
+                    st.line_chart(chart_df, color="#3b82f6")
+                else:
+                    st.info("Sem histórico de rodadas disponível.")
+            
+            st.markdown("---")
+            
+            # Detalhamento de cada teste
+            st.subheader("📜 Detalhes dos Testes de Qualidade")
+            tests_list = report_data.get("tests", [])
+            
+            for t in tests_list:
+                t_status = t.get("status", "Failed")
+                t_name = t.get("name", "")
+                t_desc = t.get("description", "")
+                t_id = t.get("test_id", "")
+                t_metric = t.get("metric_value", 0.0)
+                t_threshold = t.get("threshold", "")
+                t_details = t.get("details", [])
+                
+                if t_status == "Passed":
+                    badge_html = '<span style="background-color:#065f46; color:#34d399; padding: 4px 10px; border-radius:15px; font-size:12px; font-weight:bold;">🟢 PASS</span>'
+                    card_border = "border-left: 5px solid #10b981;"
+                else:
+                    badge_html = '<span style="background-color:#991b1b; color:#f87171; padding: 4px 10px; border-radius:15px; font-size:12px; font-weight:bold;">🔴 FAIL</span>'
+                    card_border = "border-left: 5px solid #ef4444;"
+                    
+                st.markdown(f"""
+                <div style="background-color:#1e293b; padding:20px; border-radius:10px; {card_border} margin-bottom:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h4 style="color:#f8fafc; margin:0; font-family:'Outfit', sans-serif;">[{t_id}] {t_name}</h4>
+                        {badge_html}
+                    </div>
+                    <p style="color:#94a3b8; font-size:14px; margin:5px 0 10px 0;">{t_desc}</p>
+                    <div style="display:flex; gap:30px; font-size:13px; color:#cbd5e1;">
+                        <div>🔍 <b>Métrica:</b> <code>{t_metric}</code></div>
+                        <div>📏 <b>Limite Esperado:</b> <code>{t_threshold}</code></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if t_details:
+                    with st.expander(f"Auditar detalhes do teste {t_id}"):
+                        for detail in t_details:
+                            st.write(f"- {detail}")
+                        
+        else:
+            st.warning("Relatório de qualidade indisponível ou em execução.")
+    except Exception as e:
+        st.error(f"Erro ao conectar com API de Data Quality: {e}")
