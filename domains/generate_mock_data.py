@@ -55,7 +55,8 @@ def generate_data():
         "Monitor LG 29 Ultrawide": {"base_price": 1300.00, "base_demand": 1.5, "elasticity": 2.5},
         "Teclado Mecânico Keychron": {"base_price": 600.00, "base_demand": 2.5, "elasticity": 3.0},
         "Mouse Ergonômico Vertical": {"base_price": 200.00, "base_demand": 4.0, "elasticity": 2.0},
-        "Fone Sony WH-1000XM4": {"base_price": 1700.00, "base_demand": 0.8, "elasticity": 4.0}
+        "Fone Sony WH-1000XM4": {"base_price": 1700.00, "base_demand": 1.5, "elasticity": 4.0},
+        "Curso de Analytics Engineering": {"base_price": 299.90, "base_demand": 3.0, "elasticity": 5.0}
     }
     
     sale_id_counter = 5001
