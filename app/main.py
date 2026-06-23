@@ -9,6 +9,8 @@ try:
 except (ImportError, ValueError):
     from cache import RedisCacheWrapper
 import time
+from qdrant_client import QdrantClient
+from fastembed import TextEmbedding
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -214,4 +216,113 @@ def get_optimal_price(product_name: str = None):
         raise
     except Exception as e:
         logger.error(f"Erro ao obter preço ótimo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Initialize Qdrant Client for API gateway
+qdrant_host = os.environ.get("QDRANT_HOST", "localhost")
+qdrant_port = int(os.environ.get("QDRANT_PORT", 6335))
+qdrant_client = QdrantClient(host=qdrant_host, port=qdrant_port)
+
+# Lazy-loaded text embedding model
+_embedding_model = None
+
+def get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        logger.info("Carregando modelo de embeddings FastEmbed no FastAPI...")
+        _embedding_model = TextEmbedding()
+    return _embedding_model
+
+@app.get("/api/v1/products/search")
+def search_products(query: str):
+    if not query:
+        raise HTTPException(status_code=400, detail="O parâmetro 'query' não pode ser vazio.")
+        
+    cache_key = f"product_search_{query.lower().strip().replace(' ', '_')}"
+    
+    # Tenta obter do cache
+    cached_val = cache.get(cache_key)
+    if cached_val is not None:
+        return {
+            "source": "cache",
+            "data": cached_val
+        }
+        
+    try:
+        start_time = time.time()
+        
+        # 1. Obter modelo de embedding e vetorizar query
+        model = get_embedding_model()
+        query_vector = list(model.embed([query]))[0].tolist()
+        
+        # 2. Consultar o Qdrant
+        collection_name = "products"
+        
+        # Verificar se a coleção existe
+        try:
+            collections = qdrant_client.get_collections().collections
+            exists = any(c.name == collection_name for c in collections)
+        except Exception as q_err:
+            logger.error(f"Erro ao obter coleções do Qdrant: {q_err}")
+            exists = False
+        
+        if not exists:
+            # Caso a coleção não exista, retorna uma lista vazia
+            return {
+                "source": "database_qdrant",
+                "query_time_seconds": round(time.time() - start_time, 4),
+                "data": []
+            }
+            
+        search_result = qdrant_client.search(
+            collection_name=collection_name,
+            query_vector=query_vector,
+            limit=5
+        )
+        
+        # 3. Formatar resultados
+        results = []
+        for hit in search_result:
+            pricing_details = None
+            metadata_file = os.path.join(model_dir, "pricing_metadata.json")
+            if os.path.exists(metadata_file):
+                try:
+                    with open(metadata_file, "r", encoding="utf-8") as f:
+                        meta = json.load(f)
+                    optimal_prices = meta.get("optimal_prices", {})
+                    
+                    # Tentar fazer um lookup case-insensitive e parcial
+                    hit_name = hit.payload.get("name", "").lower()
+                    for name, details in optimal_prices.items():
+                        if name.lower() in hit_name or hit_name in name.lower():
+                            pricing_details = {
+                                "base_price": details.get("base_price"),
+                                "optimal_price": details.get("optimal_price"),
+                                "revenue_lift_pct": details.get("revenue_lift_pct")
+                            }
+                            break
+                except Exception as ex:
+                    logger.warning(f"Erro ao buscar detalhes de precificação para {hit.payload.get('name')}: {ex}")
+            
+            results.append({
+                "id": hit.id,
+                "score": round(hit.score, 4),
+                "name": hit.payload.get("name"),
+                "description": hit.payload.get("description"),
+                "category": hit.payload.get("category"),
+                "pricing_details": pricing_details
+            })
+            
+        query_time = time.time() - start_time
+        logger.info(f"Busca vetorial executada em {query_time:.4f}s. Salvando no cache.")
+        
+        cache.set(cache_key, results, ttl_seconds=120)
+        
+        return {
+            "source": "database_qdrant",
+            "query_time_seconds": round(query_time, 4),
+            "data": results
+        }
+    except Exception as e:
+        logger.error(f"Erro na busca vetorial: {e}")
         raise HTTPException(status_code=500, detail=str(e))

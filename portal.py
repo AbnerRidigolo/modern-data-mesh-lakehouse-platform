@@ -122,11 +122,12 @@ st.sidebar.markdown("""
 """)
 
 # Create Tabs
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 BI Dashboard & Performance Cache",
     "🕰️ Delta Lake Time Travel & Auditoria",
     "🕸️ Catálogo Data Mesh & Contratos",
-    "📈 MLOps: Precificação Dinâmica"
+    "📈 MLOps: Precificação Dinâmica",
+    "🔍 Busca Semântica Vetorial"
 ])
 
 # ==========================================
@@ -539,3 +540,171 @@ with tab4:
             with col_g2:
                 st.markdown("**💰 Curva de Receita (Preço vs. Faturamento Esperado)**")
                 st.line_chart(curves_df["Faturamento Projetado (R$)"], color="#10b981")
+
+# ==========================================
+# TAB 5: Busca Semântica Vetorial
+# ==========================================
+with tab5:
+    st.header("🔍 Busca Semântica Vetorial de Produtos")
+    st.markdown("""
+    Explore nosso catálogo utilizando inteligência artificial. Esta busca utiliza embeddings densos gerados pelo modelo **FastEmbed (BGE)** 
+    e pesquisa por similaridade de cosseno no banco de dados vetorial **Qdrant**, permitindo encontrar produtos mesmo sem correspondência exata de palavras-chave.
+    """)
+    
+    # Exemplo de buscas rápidas
+    st.markdown("💡 **Buscas Sugeridas:**")
+    col_sug1, col_sug2, col_sug3, col_sug4 = st.columns(4)
+    suggested_query = ""
+    with col_sug1:
+        if st.button("🎧 Fone sem fio cancelamento ruído", use_container_width=True):
+            suggested_query = "Fone sem fio cancelamento ruído"
+    with col_sug2:
+        if st.button("⌨️ Teclado confortável com switch brown", use_container_width=True):
+            suggested_query = "Teclado confortável com switch brown"
+    with col_sug3:
+        if st.button("📚 Aprender modelagem dbt e airflow", use_container_width=True):
+            suggested_query = "Aprender modelagem dbt e airflow"
+    with col_sug4:
+        if st.button("🖥️ Tela ultrawide para programar", use_container_width=True):
+            suggested_query = "Tela ultrawide para programar"
+
+    # Input da Busca
+    search_query = st.text_input(
+        "O que você está procurando hoje?", 
+        value=suggested_query if suggested_query else "", 
+        placeholder="Ex: dispositivo ergonômico para evitar dores no pulso...",
+        key="main_search_input"
+    )
+    
+    if search_query:
+        st.markdown(f"### Resultados para: *\"{search_query}\"*")
+        
+        start_time = time.time()
+        try:
+            # Fazer a requisição para a nossa API
+            response = requests.get(f"{API_URL}/api/v1/products/search", params={"query": search_query})
+            latency = time.time() - start_time
+            
+            if response.status_code == 200:
+                res_data = response.json()
+                source = res_data.get("source", "database_qdrant")
+                query_time_api = res_data.get("query_time_seconds", 0)
+                products_found = res_data.get("data", [])
+                
+                # Exibir métricas de performance da busca
+                col_perf1, col_perf2, col_perf3 = st.columns(3)
+                with col_perf1:
+                    st.metric(
+                        "Tempo Total da Requisição", 
+                        f"{latency:.4f}s", 
+                        delta="Inclui rede"
+                    )
+                with col_perf2:
+                    st.metric(
+                        "Origem da Resposta", 
+                        "Cache (Redis)" if source == "cache" else "Banco Vetorial (Qdrant)",
+                        delta="Hit" if source == "cache" else "Miss",
+                        delta_color="normal" if source == "cache" else "inverse"
+                    )
+                with col_perf3:
+                    st.metric(
+                        "Latência de Processamento API", 
+                        f"{query_time_api:.4f}s"
+                    )
+                
+                st.markdown("---")
+                
+                if not products_found:
+                    st.warning("Nenhum produto correspondente encontrado no banco vetorial. Certifique-se de que a DAG de indexação foi executada no Airflow.")
+                else:
+                    for prod in products_found:
+                        score = prod.get("score", 0.0)
+                        score_pct = int(score * 100)
+                        
+                        # Criar cards estilizados premium para cada produto encontrado
+                        pricing_details = prod.get("pricing_details")
+                        
+                        # Estilização CSS inline para o card
+                        st.markdown(f"""
+                        <div style="background-color:#1e293b; padding:20px; border-radius:10px; border-left: 5px solid #3b82f6; margin-bottom:20px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <h3 style="color:#f8fafc; margin:0; font-family:'Outfit', sans-serif;">{prod.get('name')}</h3>
+                                <span style="background-color:#0f172a; color:#3b82f6; padding: 4px 10px; border-radius:15px; font-size:12px; font-weight:bold; border: 1px solid #3b82f6;">
+                                    {prod.get('category')}
+                                </span>
+                            </div>
+                            <p style="color:#cbd5e1; font-size:14px; margin:10px 0;">{prod.get('description')}</p>
+                            <div style="margin-top:15px;">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                                    <span style="color:#94a3b8; font-size:12px;">Score de Similaridade Semântica:</span>
+                                    <span style="color:#10b981; font-weight:bold; font-size:12px;">{score_pct}%</span>
+                                </div>
+                                <div style="background-color:#0f172a; border-radius:5px; height:8px; width:100%;">
+                                    <div style="background-color:#10b981; height:8px; border-radius:5px; width:{score_pct}%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Se existirem informações de precificação, exibe um painel interativo de ML logo abaixo do card
+                        if pricing_details:
+                            col_p1, col_p2, col_p3 = st.columns(3)
+                            with col_p1:
+                                st.write(f"💵 **Preço Praticado:** R$ {pricing_details.get('base_price'):,.2f}")
+                            with col_p2:
+                                st.write(f"🎯 **Preço Ótimo (P*):** R$ {pricing_details.get('optimal_price'):,.2f}")
+                            with col_p3:
+                                lift = pricing_details.get('revenue_lift_pct', 0)
+                                st.write(f"📈 **Lift de Faturamento:** +{lift:.2f}%")
+                                
+                            # Mini Simulador integrado!
+                            with st.expander(f"🎮 Ajustar Preço e Simular Demanda - {prod.get('name')}"):
+                                # Carregar modelo
+                                metadata_path = os.path.join(base_dir, "storage", "model_registry", "pricing_metadata.json")
+                                model_path = os.path.join(base_dir, "storage", "model_registry", "pricing_model.joblib")
+                                
+                                if os.path.exists(metadata_path) and os.path.exists(model_path):
+                                    import joblib
+                                    model_ml = joblib.load(model_path)
+                                    with open(metadata_path, "r", encoding="utf-8") as mf:
+                                        meta_ml = json.load(mf)
+                                        
+                                    p_base = pricing_details.get('base_price')
+                                    p_slider = st.slider(
+                                        "Simular Preço (R$):", 
+                                        min_value=float(p_base * 0.5), 
+                                        max_value=float(p_base * 1.5), 
+                                        value=float(p_base), 
+                                        step=5.0,
+                                        key=f"slider_search_{prod.get('id')}"
+                                    )
+                                    
+                                    feature_cols = meta_ml["feature_columns"]
+                                    product_cols = meta_ml["product_one_hot_columns"]
+                                    
+                                    # Montar features para o modelo
+                                    row_sim = {
+                                        "price": p_slider,
+                                        "competitor_price": pricing_details.get('base_price') * 0.98,
+                                        "day_of_week": 3,
+                                        "is_weekend": 0
+                                    }
+                                    for col in product_cols:
+                                        row_sim[col] = 1 if col == f"prod_{prod.get('name')}" else 0
+                                        
+                                    sim_df_search = pd.DataFrame([row_sim])[feature_cols]
+                                    sim_dem_search = float(model_ml.predict(sim_df_search)[0])
+                                    sim_rev_search = p_slider * sim_dem_search
+                                    
+                                    st.write(f"📈 **Demanda projetada:** {sim_dem_search:.2f} unidades/dia")
+                                    st.write(f"💰 **Faturamento projetado:** R$ {sim_rev_search:,.2f}/dia")
+                                else:
+                                    st.info("Treine o modelo no Airflow para ativar a simulação de elasticidade.")
+                        else:
+                            st.info("ℹ️ Dados de elasticidade e otimização de precificação ML indisponíveis para este item.")
+                            
+                        st.markdown("<br>", unsafe_allow_html=True)
+            else:
+                st.error(f"Erro na requisição à API: {response.text}")
+        except Exception as e:
+            st.error(f"Erro ao conectar com API: {e}")

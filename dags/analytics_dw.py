@@ -73,5 +73,19 @@ drift_task = PythonOperator(
     dag=dag,
 )
 
+# 6. Qdrant Vector Indexing Task
+def trigger_qdrant_indexing():
+    import os
+    os.environ["QDRANT_HOST"] = "qdrant"
+    os.environ["QDRANT_PORT"] = "6333"
+    from domains.ml_pricing.index_qdrant import main as run_indexing
+    run_indexing()
+
+qdrant_task = PythonOperator(
+    task_id='qdrant_vector_indexing',
+    python_callable=trigger_qdrant_indexing,
+    dag=dag,
+)
+
 # Lineage & Dependency Flow
-[crm_task, ecommerce_task] >> dbt_task >> [ml_task, drift_task]
+[crm_task, ecommerce_task] >> dbt_task >> [ml_task, drift_task, qdrant_task]
