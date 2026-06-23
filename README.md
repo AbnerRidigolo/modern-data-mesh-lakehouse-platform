@@ -1,6 +1,6 @@
-# Enterprise Data Mesh & Lakehouse Platform (Delta Lake + Airflow + dbt + DuckDB + FastAPI + Redis + MLflow)
+# Enterprise Data Mesh & Lakehouse Platform (Delta Lake + Airflow + dbt + DuckDB + FastAPI + Redis + MLflow + Qdrant + Data Quality)
 
-Este projeto implementa uma **Plataforma de Dados de Nível de Produtividade Industrial (Lead/Staff Data Engineer & MLOps)**. Ela utiliza o paradigma de **Data Mesh** (domínios descentralizados expostos como produtos de dados), armazenamento colunar transacional (**Lakehouse com Delta Lake**), engenharia de analytics (**dbt Core + DuckDB**), servimento performático (**FastAPI + cache Redis**), modelagem e ciclo de vida de ML (**MLflow + Random Forest + Drift Monitor**) e orquestração automatizada (**Apache Airflow**).
+Este projeto implementa uma **Plataforma de Dados de Nível de Produtividade Industrial (Lead/Staff Data Engineer & MLOps)**. Ela utiliza o paradigma de **Data Mesh** (domínios descentralizados expostos como produtos de dados), armazenamento colunar transacional (**Lakehouse com Delta Lake**), engenharia de analytics (**dbt Core + DuckDB**), servimento performático (**FastAPI + cache Redis**), modelagem e ciclo de vida de ML (**MLflow + Random Forest + Drift Monitor**), busca semântica vetorial (**Qdrant + FastEmbed**), observabilidade de qualidade de dados (**Data Quality Engine**) e orquestração automatizada (**Apache Airflow**).
 
 ---
 
@@ -14,6 +14,8 @@ graph TD
         FLOW -->|Trigger Warehouse| DBT_B["dbt build & docs generate"]
         FLOW -->|Trigger ML Training| ML_T["ML pricing_model Training"]
         FLOW -->|Trigger Drift| DRIFT_T["ML pricing_drift Check"]
+        FLOW -->|Trigger Vector Indexing| Q_VEC["Qdrant Vector Indexing"]
+        FLOW -->|Trigger Data Quality| DQ_C["Data Quality Check"]
     end
 
     subgraph Produtores ["Produtores (Data Mesh & Data Contracts)"]
@@ -33,17 +35,23 @@ graph TD
         DBT_B -->|Materializa Marts| DDB[("DuckDB Analytics DW")]
     end
 
-    subgraph MLOps_Lifecycle ["Ciclo de Vida de ML (MLflow & Drift)"]
+    subgraph MLOps_Lifecycle ["Ciclo de Vida de ML, Vetores & DQ"]
         DDB -->|ml_features_pricing| ML_T
         ML_T -->|Calcula P* Otimizado| REG[(Model Registry: Local & MLflow)]
         ML_T -->|Logs de Runs & Métricas| MLF[("MLflow Server")]
         DDB -->|Preço Semanal vs Treino| DRIFT_T
         DRIFT_T -->|Kolmogorov-Smirnov| DRIFT_J["drift_status.json"]
+        DDB -->|dim_products| Q_VEC
+        Q_VEC -->|Embeddings| QD[("Qdrant Vector DB")]
+        DDB -->|Validations| DQ_C
+        DQ_C -->|Metrics Report| DQ_R["dq_report.json / dq_history.jsonl"]
     end
 
     subgraph Servimento ["Camada de Servimento (DaaS)"]
         DDB -->|Query SQL| API["FastAPI Gateway"]
         REG -->|Load pricing_metadata.json| API
+        QD -->|Semantic Similarity Search| API
+        DQ_R -->|Quality Reports API| API
         API -->|Cache Lookup <1ms| REDIS[("Redis Cache")]
     end
 
@@ -70,7 +78,9 @@ graph TD
 8. **Pydantic v2 (Data Contracts)**: Validação rígida de esquemas na entrada do pipeline. Qualquer dado corrompido é enviado para a quarentena de auditoria.
 9. **MLflow Tracking**: Servidor centralizado para controle de ciclo de vida de modelos, logging de parâmetros, métricas de regressão ($R^2$ e MAE) e artefatos de treinamento.
 10. **Evitação de Drift & Time Travel**: Análise estatística de desvio de dados (Kolmogorov-Smirnov Test) e suporte a carregamento de dados históricos do Delta Lake para retreino retroativo reprodutível.
-11. **Streamlit (Portal BI & Governança)**: Interface de visualização que integra catálogo de governança, linhegem dbt dinâmica via Graphviz, monitoramento de drift de ML, gráficos de KPIs e comparador de histórico de commits do Delta Lake com suporte a Rollback físico.
+11. **Streamlit (Portal BI & Governança)**: Interface de visualização que integra catálogo de governança, lineage dbt dinâmico via Graphviz, monitoramento de drift de ML, gráficos de KPIs, comparador de histórico de commits do Delta Lake com suporte a Rollback físico, busca semântica vetorial e observabilidade de Data Quality.
+12. **Qdrant & FastEmbed**: Banco de dados vetorial corporativo (Qdrant) integrado com pipeline leve de embeddings em ONNX (FastEmbed) para buscas semânticas em linguagem natural no catálogo de produtos.
+13. **Data Quality Observability**: Motor customizado de qualidade de dados integrado no Airflow e DuckDB para monitorar anomalias de faturamento, integridade referencial, volume diário e quedas bruscas de vendas.
 
 ---
 
@@ -171,3 +181,21 @@ Na aba **Delta Lake Time Travel** do Streamlit:
 1. Visualize o histórico de commits físicos das suas tabelas.
 2. Use o slider de versões para ver os dados exatamente como eram no passado.
 3. Clique em **Executar Restore** para reverter a tabela física Delta para a versão selecionada instantaneamente!
+
+### 5. Busca Semântica Vetorial de Produtos
+Na aba **Busca Semântica Vetorial** do Streamlit:
+1. Faça buscas em linguagem natural (ex: "dispositivo para programar" ou "teclado brown").
+2. Veja o score de similaridade cosseno (calculado via FastEmbed/ONNX em tempo real e indexado no Qdrant).
+3. Consulte as métricas integradas de otimização de preços de ML para cada produto retornado.
+4. Visualize o log histórico de buscas com controle interativo de limites para identificar lacunas de catálogo (Catalog Gaps).
+
+### 6. Observabilidade de Data Quality
+Na aba **Observabilidade de Data Quality** do Streamlit:
+1. Veja o score de conformidade geral da plataforma em lote (100% Passed).
+2. Acompanhe a linha do tempo histórica de conformidade alimentada diretamente pelas DAGs do Airflow.
+3. Audite anomalias complexas:
+   * **Desvio de Preço Concorrente**: Flutuações maiores que 50% em relação aos nossos preços.
+   * **Anomalia de Queda de Vendas**: Detecção imediata se algum produto teve vendas zeradas nos últimos 3 dias.
+   * **Registros Órfãos (Completeness)**: Proporção de vendas sem clientes associados (órfãos).
+   * **Anomalia de Volume Diário**: Alerta se o volume do último dia desviar em mais de 2 desvios padrões da média histórica.
+
