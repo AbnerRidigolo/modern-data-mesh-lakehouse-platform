@@ -44,10 +44,10 @@ ecommerce_task = PythonOperator(
 )
 
 # 3. dbt Analytical Data Warehouse Task (Staging & Marts)
-# Runs dbt build pointing to the mounted directories inside the container
+# Runs dbt build and generates documentation docs
 dbt_task = BashOperator(
     task_id='dbt_warehouse_build',
-    bash_command='cd /opt/airflow/analytics_dw && dbt build --profiles-dir .',
+    bash_command='cd /opt/airflow/analytics_dw && dbt build --profiles-dir . && dbt docs generate --profiles-dir .',
     dag=dag,
 )
 
@@ -62,5 +62,16 @@ ml_task = PythonOperator(
     dag=dag,
 )
 
+# 5. ML Data Drift Monitoring Task
+def trigger_drift_monitoring():
+    from domains.ml_pricing.drift_monitor import check_drift
+    check_drift()
+
+drift_task = PythonOperator(
+    task_id='ml_pricing_drift_check',
+    python_callable=trigger_drift_monitoring,
+    dag=dag,
+)
+
 # Lineage & Dependency Flow
-[crm_task, ecommerce_task] >> dbt_task >> ml_task
+[crm_task, ecommerce_task] >> dbt_task >> [ml_task, drift_task]

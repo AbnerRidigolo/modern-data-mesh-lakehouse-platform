@@ -27,6 +27,69 @@ st.markdown("""
 # API endpoint URL
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
+def load_dbt_lineage():
+    manifest_path = os.path.join(base_dir, "analytics_dw", "target", "manifest.json")
+    if not os.path.exists(manifest_path):
+        return None
+        
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+            
+        nodes = manifest.get("nodes", {})
+        
+        # We want to trace models in our project (package name is 'analytics_dw')
+        dag_nodes = {}
+        
+        # Parse standard models
+        for node_id, node_info in nodes.items():
+            if node_info.get("resource_type") == "model" and node_info.get("package_name") == "analytics_dw":
+                name = node_info.get("name")
+                depends_on = node_info.get("depends_on", {}).get("nodes", [])
+                parents = []
+                for p_id in depends_on:
+                    if p_id.startswith("model.analytics_dw."):
+                        parents.append(p_id.split(".")[-1])
+                    elif p_id.startswith("source.analytics_dw."):
+                        parts = p_id.split(".")
+                        parents.append(f"{parts[-2]}.{parts[-1]}")
+                dag_nodes[name] = parents
+                
+        return dag_nodes
+    except Exception as e:
+        st.error(f"Erro ao carregar linhagem dbt: {e}")
+        return None
+
+def render_lineage_graph(dag_nodes):
+    if not dag_nodes:
+        st.warning("Nenhum nó de linhagem encontrado.")
+        return
+        
+    # DOT language graph representation
+    dot = "digraph Lineage {\n"
+    dot += '    graph [rankdir=LR, bgcolor="#1e293b", margin=0];\n'
+    dot += '    node [fontname="Outfit", fontsize=11, shape=box, style="filled,rounded", color="#3b82f6", fillcolor="#0f172a", fontcolor="#f8fafc"];\n'
+    dot += '    edge [color="#64748b", arrowhead=vee, arrowsize=0.7];\n'
+    
+    for name, parents in dag_nodes.items():
+        if name.startswith("stg_"):
+            color = "#10b981"  # green for staging
+        elif name.startswith("dim_"):
+            color = "#8b5cf6"  # purple for dimension
+        elif name.startswith("fct_"):
+            color = "#f59e0b"  # amber for fact
+        elif name.startswith("ml_"):
+            color = "#ec4899"  # pink for ml/feature
+        else:
+            color = "#3b82f6"  # blue default
+            
+        dot += f'    "{name}" [color="{color}", fillcolor="#0f172a", penwidth=2];\n'
+        for p in parents:
+            dot += f'    "{p}" -> "{name}";\n'
+            
+    dot += "}"
+    st.graphviz_chart(dot)
+
 # Local Delta Paths
 base_dir = os.path.abspath(os.path.dirname(__file__))
 DELTA_PATHS = {
@@ -292,6 +355,19 @@ with tab3:
                     ef.seek(0)
                     st.text(ef.read())
 
+    st.markdown("---")
+    st.subheader("📊 Linhagem de Dados Analíticos (dbt Lineage Graph)")
+    st.markdown("""
+    Abaixo está a linhagem de dados gerada automaticamente a partir do compilador do **dbt Core**.
+    Ela ilustra o fluxo de dados desde as tabelas de staging (Delta Lake) até os marts analíticos e features de ML (DuckDB).
+    """)
+    
+    dag_nodes = load_dbt_lineage()
+    if dag_nodes is None:
+        st.info("💡 Execute a pipeline no Airflow para gerar a linhagem dbt docs (`manifest.json`).")
+    else:
+        render_lineage_graph(dag_nodes)
+
 # ==========================================
 # TAB 4: MLOps: Precificação Dinâmica
 # ==========================================
@@ -313,6 +389,21 @@ with tab4:
             
         import joblib
         model = joblib.load(model_path)
+
+        # Check drift status
+        drift_path = os.path.join(base_dir, "storage", "model_registry", "drift_status.json")
+        if os.path.exists(drift_path):
+            with open(drift_path, "r", encoding="utf-8") as rf:
+                drift_data = json.load(rf)
+                
+            if drift_data.get("overall_drift_detected", False):
+                st.error("🚨 **Alerta de Drift**: Desvio estatístico significativo detectado nos preços de venda recentes! O modelo pode estar operando fora das condições ideais de treino. Recomenda-se retreinar o pipeline.")
+            else:
+                st.success("✅ **Drift Monitor**: Distribuições de preços recentes estão estáveis e em conformidade com os dados de treino.")
+        else:
+            st.info("ℹ️ Nenhum dado de monitoramento de drift gerado ainda.")
+
+        st.markdown("---")
         
         # Display Model Metrics in premium cards
         metrics = metadata.get("model_metrics", {})

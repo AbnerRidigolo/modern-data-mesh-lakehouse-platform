@@ -25,4 +25,8 @@ RUN pip install --no-cache-dir \
     delta-spark==3.2.1 \
     redis==5.2.1 \
     scikit-learn==1.6.0 \
-    joblib==1.4.2
+    joblib==1.4.2 \
+    mlflow \
+    scipy==1.11.4 \
+    pytest==7.4.4 \
+    email-validator==2.3.0
