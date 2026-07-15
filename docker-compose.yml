@@ -11,6 +11,14 @@ x-airflow-common: &airflow-common
     AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: 10
     # Custom path mappings for local directories inside containers
     PYTHONPATH: /opt/airflow
+    # MinIO / S3 configurations
+    AWS_ACCESS_KEY_ID: minioadmin
+    AWS_SECRET_ACCESS_KEY: minioadmin
+    MINIO_ENDPOINT_URL: http://minio:9000
+    AWS_ENDPOINT_URL: http://minio:9000
+    AWS_ALLOW_HTTP: "true"
+    AWS_S3_ALLOW_UNSAFE_SSL: "true"
+    MINIO_ENDPOINT: minio:9000
   volumes:
     - ./dags:/opt/airflow/dags
     - ./storage:/opt/airflow/storage

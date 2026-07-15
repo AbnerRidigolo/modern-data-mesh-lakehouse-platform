@@ -6,6 +6,12 @@ analytics_dw:
       extensions:
         - delta
         - parquet
+        - httpfs
       settings:
         timezone: UTC
+        s3_endpoint: "{{ env_var('MINIO_ENDPOINT', 'localhost:9000') }}"
+        s3_access_key_id: "{{ env_var('AWS_ACCESS_KEY_ID', 'minioadmin') }}"
+        s3_secret_access_key: "{{ env_var('AWS_SECRET_ACCESS_KEY', 'minioadmin') }}"
+        s3_use_ssl: false
+        s3_url_style: path
   target: dev

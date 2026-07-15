@@ -6,6 +6,14 @@ import pandas as pd
 from datetime import datetime
 from scipy.stats import ks_2samp
 
+# Evidently AI Imports
+try:
+    from evidently.report import Report
+    from evidently.metric_preset import DataDriftPreset
+    EVIDENTLY_AVAILABLE = True
+except ImportError:
+    EVIDENTLY_AVAILABLE = False
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("Drift_Monitor")
 
@@ -36,6 +44,9 @@ def check_drift():
     
     # We define "current" as the last 15 days of data, and "baseline" as everything prior
     cutoff_date = max_date - pd.Timedelta(days=15)
+    
+    reference_df = df_all[df_all["sale_date"] < cutoff_date]
+    current_df = df_all[df_all["sale_date"] >= cutoff_date]
     
     drift_report = {}
     overall_drift_detected = False
@@ -75,6 +86,36 @@ def check_drift():
         }
         logger.info(f"Drift check {prod}: Status={drift_report[prod]['status']}, p-value={p_value:.4f}")
         
+    # Generate Evidently AI Drift Report
+    if EVIDENTLY_AVAILABLE and len(reference_df) >= 10 and len(current_df) >= 5:
+        try:
+            logger.info("Executando relatório de drift do Evidently AI...")
+            # We compare price column drift
+            report = Report(metrics=[
+                DataDriftPreset(columns=["price"])
+            ])
+            report.run(reference_data=reference_df[["price"]], current_data=current_df[["price"]])
+            
+            # Save HTML report
+            report_html_path = os.path.join(model_dir, "drift_report.html")
+            report.save_html(report_html_path)
+            logger.info(f"Relatório interativo do Evidently AI salvo em: {report_html_path}")
+            
+            # Extract overall drift status from evidently report dict
+            metrics_dict = report.as_dict()
+            for metric in metrics_dict.get("metrics", []):
+                result = metric.get("result", {})
+                if "dataset_drift" in result:
+                    overall_drift_detected = bool(result["dataset_drift"])
+                    break
+                elif "drift_by_columns" in result:
+                    price_drift = result["drift_by_columns"].get("price", {})
+                    if "drift_detected" in price_drift:
+                        overall_drift_detected = bool(price_drift["drift_detected"])
+                        break
+        except Exception as e:
+            logger.error(f"Erro ao gerar relatório do Evidently AI: {e}")
+            
     report = {
         "overall_drift_detected": overall_drift_detected,
         "checked_at": datetime.now().isoformat(),

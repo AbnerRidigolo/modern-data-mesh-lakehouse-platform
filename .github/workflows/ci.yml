@@ -1,24 +1,63 @@
-name: CI Data Mesh Pipeline
+name: CI Pipeline
 
 on:
   push:
-    branches: [ main, feature/* ]
+    branches: [ main, master ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: airflow
+          POSTGRES_PASSWORD: airflow
+          POSTGRES_DB: airflow
+        ports:
+          - 5439:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
+      redis:
+        image: redis:7
+        ports:
+          - 6389:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        ports:
+          - 9000:9000
+          - 9001:9001
+        options: >-
+          server /data --console-address ":9001"
+
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6335:6333
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
-        cache: 'pip'
+        python-version: '3.10'
 
     - name: Install dependencies
       run: |
@@ -26,5 +65,11 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run Pytest
+      env:
+        DB_PATH: storage/analytics.duckdb
+        REDIS_HOST: localhost
+        REDIS_PORT: 6389
+        QDRANT_HOST: localhost
+        QDRANT_PORT: 6335
       run: |
         pytest tests/

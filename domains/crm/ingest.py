@@ -75,15 +75,57 @@ def run_ingestion():
     # Cast created_at to timestamp (Delta Lake/Parquet compatibility)
     df = df.with_columns(pl.col("created_at").cast(pl.Datetime))
 
-    # Write Polars DataFrame to Delta Lake
-    logger.info(f"Escrevendo {len(df)} registros no Delta Lake: {delta_path}")
+    # Write Polars DataFrame to Delta Lake (support S3/MinIO if configured)
+    s3_enabled = os.environ.get("AWS_ACCESS_KEY_ID") is not None
     
-    # write_deltalake takes pandas DataFrame or Arrow table. Polars to_arrow() is zero-copy
-    write_deltalake(
-        delta_path,
-        df.to_arrow(),
-        mode="append"
-    )
+    if s3_enabled:
+        bucket_name = "lakehouse"
+        endpoint = os.environ.get("MINIO_ENDPOINT_URL", "http://localhost:9000")
+        aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID", "minioadmin")
+        aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "minioadmin")
+        
+        try:
+            import boto3
+            from botocore.client import Config
+            s3 = boto3.client(
+                's3',
+                endpoint_url=endpoint,
+                aws_access_key_id=aws_access_key,
+                aws_secret_access_key=aws_secret_key,
+                config=Config(signature_version='s3v4'),
+                region_name='us-east-1'
+            )
+            try:
+                s3.head_bucket(Bucket=bucket_name)
+                logger.info(f"Bucket '{bucket_name}' já existe no MinIO.")
+            except Exception:
+                logger.info(f"Criando bucket '{bucket_name}' no MinIO...")
+                s3.create_bucket(Bucket=bucket_name)
+        except Exception as e:
+            logger.error(f"Erro ao verificar/criar bucket S3: {e}")
+
+        delta_path = f"s3://{bucket_name}/crm/customers"
+        storage_options = {
+            "AWS_ACCESS_KEY_ID": aws_access_key,
+            "AWS_SECRET_ACCESS_KEY": aws_secret_key,
+            "AWS_ENDPOINT_URL": endpoint,
+            "AWS_ALLOW_HTTP": "true",
+            "AWS_S3_ALLOW_UNSAFE_SSL": "true"
+        }
+        logger.info(f"Escrevendo {len(df)} registros no Delta Lake S3: {delta_path}")
+        write_deltalake(
+            delta_path,
+            df.to_arrow(),
+            mode="append",
+            storage_options=storage_options
+        )
+    else:
+        logger.info(f"Escrevendo {len(df)} registros no Delta Lake local: {delta_path}")
+        write_deltalake(
+            delta_path,
+            df.to_arrow(),
+            mode="append"
+        )
     logger.info("Escrita concluída com sucesso.")
 
 if __name__ == "__main__":

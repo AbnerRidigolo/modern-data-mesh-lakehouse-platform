@@ -2,8 +2,11 @@ import os
 import json
 import logging
 import duckdb
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+import jwt
+from datetime import datetime, timedelta
 try:
     from .cache import RedisCacheWrapper
 except (ImportError, ValueError):
@@ -30,6 +33,49 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Configuration for JWT
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "super-secret-key-for-data-mesh-123456")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token")
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Token de autenticação inválido ou expirado.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        return username
+    except jwt.PyJWTError:
+        raise credentials_exception
+
+@app.post("/api/v1/auth/token")
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    if form_data.username == "admin" and form_data.password == "adminpassword":
+        access_token = create_access_token(data={"sub": form_data.username})
+        return {"access_token": access_token, "token_type": "bearer"}
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Usuário ou senha incorretos."
+        )
 
 # Dynamically locate DuckDB file
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -77,7 +123,7 @@ def read_root():
     }
 
 @app.get("/api/v1/kpis")
-def get_kpis():
+def get_kpis(current_user: str = Depends(get_current_user)):
     cache_key = "kpis_monthly"
     
     # Try getting from cache
@@ -114,7 +160,7 @@ def get_kpis():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/customers")
-def get_customers():
+def get_customers(current_user: str = Depends(get_current_user)):
     cache_key = "customers_list"
     
     cached_val = cache.get(cache_key)
@@ -147,7 +193,7 @@ def get_customers():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/v1/cache/clear")
-def clear_cache():
+def clear_cache(current_user: str = Depends(get_current_user)):
     cache.clear()
     return {"message": "Todos os caches limpos."}
 
@@ -157,7 +203,7 @@ model_dir_container = "/opt/airflow/storage/model_registry"
 model_dir = model_dir_container if os.path.exists(model_dir_container) else model_dir_local
 
 @app.get("/api/v1/predict/optimal-price")
-def get_optimal_price(product_name: str = None):
+def get_optimal_price(product_name: str = None, current_user: str = Depends(get_current_user)):
     # If product_name is provided, use it to construct cache key
     cache_key = f"optimal_price_{product_name.lower().replace(' ', '_')}" if product_name else "optimal_price_all"
     
@@ -255,7 +301,7 @@ def log_search_event(query: str, latency_seconds: float, source: str, top_match:
         logger.error(f"Erro ao salvar log de busca: {e}")
 
 @app.get("/api/v1/products/search")
-def search_products(query: str):
+def search_products(query: str, current_user: str = Depends(get_current_user)):
     start_time = time.time()
     if not query:
         raise HTTPException(status_code=400, detail="O parâmetro 'query' não pode ser vazio.")
@@ -361,7 +407,7 @@ def search_products(query: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/search/logs")
-def get_search_logs(limit: int = 50):
+def get_search_logs(limit: int = 50, current_user: str = Depends(get_current_user)):
     log_file = os.path.join(base_dir, "storage", "logs", "search_logs.jsonl")
     if not os.path.exists(log_file):
         return []
@@ -378,7 +424,7 @@ def get_search_logs(limit: int = 50):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/data-quality/report")
-def get_data_quality_report():
+def get_data_quality_report(current_user: str = Depends(get_current_user)):
     report_file = os.path.join(base_dir, "storage", "data_quality", "dq_report.json")
     if not os.path.exists(report_file):
         raise HTTPException(
@@ -394,7 +440,7 @@ def get_data_quality_report():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/data-quality/history")
-def get_data_quality_history(limit: int = 30):
+def get_data_quality_history(limit: int = 30, current_user: str = Depends(get_current_user)):
     history_file = os.path.join(base_dir, "storage", "data_quality", "dq_history.jsonl")
     if not os.path.exists(history_file):
         return []

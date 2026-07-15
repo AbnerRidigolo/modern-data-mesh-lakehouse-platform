@@ -73,6 +73,9 @@ def run_ingestion():
     from pyspark.sql import SparkSession
     from delta import configure_spark_with_delta_pip
 
+    s3_enabled = os.environ.get("AWS_ACCESS_KEY_ID") is not None
+    bucket_name = "lakehouse"
+
     # Setup Spark with Delta Lake jars
     builder = SparkSession.builder \
         .appName("ECommerceIngestion") \
@@ -85,7 +88,44 @@ def run_ingestion():
         .config("spark.driver.host", "localhost") \
         .config("spark.driver.bindAddress", "127.0.0.1")
 
-    spark = configure_spark_with_delta_pip(builder).getOrCreate()
+    if s3_enabled:
+        endpoint = os.environ.get("MINIO_ENDPOINT_URL", "http://localhost:9000")
+        aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID", "minioadmin")
+        aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "minioadmin")
+        
+        builder = builder \
+            .config("spark.hadoop.fs.s3a.endpoint", endpoint) \
+            .config("spark.hadoop.fs.s3a.access.key", aws_access_key) \
+            .config("spark.hadoop.fs.s3a.secret.key", aws_secret_key) \
+            .config("spark.hadoop.fs.s3a.path.style.access", "true") \
+            .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+            .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+            
+        spark = configure_spark_with_delta_pip(builder, extra_packages=["org.apache.hadoop:hadoop-aws:3.3.4"]).getOrCreate()
+        delta_path = f"s3a://{bucket_name}/ecommerce/sales"
+        
+        # Ensure bucket exists
+        try:
+            import boto3
+            from botocore.client import Config
+            s3 = boto3.client(
+                's3',
+                endpoint_url=endpoint,
+                aws_access_key_id=aws_access_key,
+                aws_secret_access_key=aws_secret_key,
+                config=Config(signature_version='s3v4'),
+                region_name='us-east-1'
+            )
+            try:
+                s3.head_bucket(Bucket=bucket_name)
+                logger.info(f"Bucket '{bucket_name}' já existe no MinIO.")
+            except Exception:
+                logger.info(f"Criando bucket '{bucket_name}' no MinIO...")
+                s3.create_bucket(Bucket=bucket_name)
+        except Exception as e:
+            logger.error(f"Erro ao verificar/criar bucket S3: {e}")
+    else:
+        spark = configure_spark_with_delta_pip(builder).getOrCreate()
     
     try:
         logger.info("Convertendo registros válidos em Spark DataFrame...")

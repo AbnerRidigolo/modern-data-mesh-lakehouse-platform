@@ -27,6 +27,27 @@ st.markdown("""
 # API endpoint URL
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
+# Automatic backend authentication to FastAPI DaaS
+@st.cache_data(ttl=1800) # cache token for 30 minutes
+def get_api_token():
+    try:
+        resp = requests.post(f"{API_URL}/api/v1/auth/token", data={"username": "admin", "password": "adminpassword"}, timeout=5)
+        if resp.status_code == 200:
+            return resp.json().get("access_token")
+    except Exception:
+        pass
+    return None
+
+def api_get(endpoint, params=None):
+    token = get_api_token()
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    return requests.get(f"{API_URL}{endpoint}", params=params, headers=headers)
+
+def api_post(endpoint, json=None, data=None):
+    token = get_api_token()
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    return requests.post(f"{API_URL}{endpoint}", json=json, data=data, headers=headers)
+
 def load_dbt_lineage():
     manifest_path = os.path.join(base_dir, "analytics_dw", "target", "manifest.json")
     if not os.path.exists(manifest_path):
@@ -90,12 +111,28 @@ def render_lineage_graph(dag_nodes):
     dot += "}"
     st.graphviz_chart(dot)
 
-# Local Delta Paths
+# Local or S3 Delta Paths
 base_dir = os.path.abspath(os.path.dirname(__file__))
-DELTA_PATHS = {
-    "CRM Customers": os.path.join(base_dir, "storage", "lakehouse", "crm", "customers"),
-    "E-Commerce Sales": os.path.join(base_dir, "storage", "lakehouse", "ecommerce", "sales")
-}
+s3_enabled = os.environ.get("AWS_ACCESS_KEY_ID") is not None
+
+if s3_enabled:
+    DELTA_PATHS = {
+        "CRM Customers": "s3://lakehouse/crm/customers",
+        "E-Commerce Sales": "s3://lakehouse/ecommerce/sales"
+    }
+    delta_storage_options = {
+        "AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID", "minioadmin"),
+        "AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY", "minioadmin"),
+        "AWS_ENDPOINT_URL": os.environ.get("MINIO_ENDPOINT_URL", "http://localhost:9000"),
+        "AWS_ALLOW_HTTP": "true",
+        "AWS_S3_ALLOW_UNSAFE_SSL": "true"
+    }
+else:
+    DELTA_PATHS = {
+        "CRM Customers": os.path.join(base_dir, "storage", "lakehouse", "crm", "customers"),
+        "E-Commerce Sales": os.path.join(base_dir, "storage", "lakehouse", "ecommerce", "sales")
+    }
+    delta_storage_options = None
 
 # Sidebar Info
 st.sidebar.markdown("### 🛠️ Status da Infraestrutura")
@@ -145,13 +182,13 @@ with tab1:
         if st.button("Consultar API (Sem Caching / Forçar DB)"):
             # Clear cache first
             try:
-                requests.post(f"{API_URL}/api/v1/cache/clear")
+                api_post("/api/v1/cache/clear")
             except Exception:
                 pass
                 
             start = time.time()
             try:
-                r = requests.get(f"{API_URL}/api/v1/kpis").json()
+                r = api_get("/api/v1/kpis").json()
                 lat = time.time() - start
                 st.metric("Tempo de Resposta (DB)", f"{lat:.4f}s", delta="Cache Miss", delta_color="inverse")
                 st.json(r)
@@ -162,7 +199,7 @@ with tab1:
         if st.button("Consultar API (Com Caching / Redis)"):
             start = time.time()
             try:
-                r = requests.get(f"{API_URL}/api/v1/kpis").json()
+                r = api_get("/api/v1/kpis").json()
                 lat = time.time() - start
                 st.metric("Tempo de Resposta (Redis)", f"{lat:.4f}s", delta="Cache Hit", delta_color="normal")
                 st.json(r)
@@ -174,7 +211,7 @@ with tab1:
     # Renders the actual dashboard if DB is ready
     st.subheader("📈 KPIs Consolidados por Mês")
     try:
-        kpi_resp = requests.get(f"{API_URL}/api/v1/kpis").json()
+        kpi_resp = api_get("/api/v1/kpis").json()
         kpi_data = kpi_resp.get("data", [])
         
         if not kpi_data:
@@ -211,11 +248,22 @@ with tab2:
     selected_table = st.selectbox("Selecione o Data Product para Auditar:", list(DELTA_PATHS.keys()))
     table_path = DELTA_PATHS[selected_table]
     
-    if not os.path.exists(table_path):
+    table_exists = True
+    dt = None
+    if not s3_enabled:
+        table_exists = os.path.exists(table_path)
+    else:
+        try:
+            dt = DeltaTable(table_path, storage_options=delta_storage_options)
+        except Exception:
+            table_exists = False
+
+    if not table_exists:
         st.warning(f"A tabela Delta '{selected_table}' ainda não foi criada. Execute a pipeline no Airflow.")
     else:
-        # Load Delta Table
-        dt = DeltaTable(table_path)
+        # Load Delta Table if not loaded
+        if dt is None:
+            dt = DeltaTable(table_path, storage_options=delta_storage_options)
         
         # 1. Show Version History
         st.subheader("📜 Histórico de Commits (Audit Log)")
@@ -246,7 +294,7 @@ with tab2:
         
         # Load and display that specific version
         try:
-            dt_version = DeltaTable(table_path, version=selected_version)
+            dt_version = DeltaTable(table_path, version=selected_version, storage_options=delta_storage_options)
             df_version = dt_version.to_pandas()
             st.dataframe(df_version, use_container_width=True)
         except Exception as e:
@@ -404,6 +452,19 @@ with tab4:
                 st.success("✅ **Drift Monitor**: Distribuições de preços recentes estão estáveis e em conformidade com os dados de treino.")
         else:
             st.info("ℹ️ Nenhum dado de monitoramento de drift gerado ainda.")
+
+        # Render Evidently HTML Report if available
+        evidently_html_path = os.path.join(base_dir, "storage", "model_registry", "drift_report.html")
+        if os.path.exists(evidently_html_path):
+            st.markdown("---")
+            st.markdown("### 📊 Relatório Detalhado de Data Drift (Evidently AI)")
+            import streamlit.components.v1 as components
+            try:
+                with open(evidently_html_path, "r", encoding="utf-8") as f:
+                    html_content = f.read()
+                components.html(html_content, height=800, scrolling=True)
+            except Exception as e:
+                st.error(f"Erro ao renderizar relatório do Evidently AI: {e}")
 
         st.markdown("---")
         
@@ -639,7 +700,7 @@ with tab5:
         start_time = time.time()
         try:
             # Fazer a requisição para a nossa API
-            response = requests.get(f"{API_URL}/api/v1/products/search", params={"query": search_query})
+            response = api_get("/api/v1/products/search", params={"query": search_query})
             latency = time.time() - start_time
             
             if response.status_code == 200:
@@ -777,7 +838,7 @@ with tab6:
     """)
     
     try:
-        dq_resp = requests.get(f"{API_URL}/api/v1/data-quality/report")
+        dq_resp = api_get("/api/v1/data-quality/report")
         if dq_resp.status_code == 200:
             report_data = dq_resp.json()
             score = report_data.get("compliance_score", 0.0)
@@ -805,7 +866,7 @@ with tab6:
             
             # Histórico de Rodadas (Gráfico de Linha)
             st.subheader("📈 Linha do Tempo de Qualidade de Dados")
-            hist_resp = requests.get(f"{API_URL}/api/v1/data-quality/history")
+            hist_resp = api_get("/api/v1/data-quality/history")
             if hist_resp.status_code == 200:
                 hist_data = hist_resp.json()
                 if hist_data:

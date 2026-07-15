@@ -22,3 +22,11 @@ pytest==7.4.4
 email-validator==2.3.0
 qdrant-client==1.7.3
 fastembed==0.2.2
+
+# New dependencies for improvements
+boto3==1.34.143
+s3fs==2024.6.1
+pyjwt==2.10.1
+passlib[bcrypt]==1.7.4
+evidently==0.4.31
+python-multipart==0.0.32

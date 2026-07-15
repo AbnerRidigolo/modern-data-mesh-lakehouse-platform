@@ -1,5 +1,5 @@
 WITH source AS (
-    SELECT * FROM delta_scan('{{ env_var("STORAGE_PATH", "/opt/airflow/storage") }}/lakehouse/ecommerce/sales')
+    SELECT * FROM delta_scan('s3://lakehouse/ecommerce/sales')
 ),
 
 renamed AS (
