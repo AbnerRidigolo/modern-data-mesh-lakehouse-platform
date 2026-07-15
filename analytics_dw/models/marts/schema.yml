@@ -38,3 +38,37 @@ models:
         tests:
           - unique
           - not_null
+
+  - name: dim_products
+    description: "Dimensão de produtos derivada do seed do catálogo, usada para busca semântica vetorial"
+    columns:
+      - name: product_id
+        description: "Chave primária sintética do produto"
+        tests:
+          - unique
+          - not_null
+      - name: product_name
+        description: "Nome do produto"
+        tests:
+          - unique
+          - not_null
+
+  - name: ml_features_pricing
+    description: "Feature store diária de preço/demanda por produto, usada pelo treino do modelo de precificação dinâmica"
+    columns:
+      - name: product_name
+        description: "Nome do produto"
+        tests:
+          - not_null
+      - name: price
+        description: "Preço praticado no dia"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+      - name: units_sold
+        description: "Unidades vendidas no dia"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
