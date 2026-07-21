@@ -66,8 +66,9 @@ export default function MLOpsPage() {
       <div className="page-header">
         <h2>📈 Otimização de Elasticidade e Precificação Dinâmica</h2>
         <p>
-          Modelo de Machine Learning (Random Forest Regressor) treinado no Lakehouse, simulando resposta de demanda e
-          calculando o preço ideal de maximização de faturamento.
+          Modelo de demanda selecionado por <strong>validação temporal</strong> (holdout + TimeSeriesSplit) contra um
+          baseline, com <strong>restrição de monotonicidade</strong> preço→demanda e gate de validade econômica antes
+          de otimizar preços.
         </p>
       </div>
 
@@ -87,10 +88,43 @@ export default function MLOpsPage() {
         <>
           <div className="card">
             <div className="metric-grid mb-0">
+              <MetricCard label="Modelo Campeão" value={metadata.champion_model ?? "random_forest"} />
               <MetricCard label="Acurácia do Modelo (Test R²)" value={`${(metadata.model_metrics.r2_score * 100).toFixed(2)}%`} />
               <MetricCard label="Erro Médio Absoluto (MAE)" value={`${metadata.model_metrics.mae.toFixed(2)} unidades`} />
               <MetricCard label="Último Retreino" value={new Date(metadata.last_trained).toLocaleString("pt-BR")} />
             </div>
+
+            {metadata.model_metrics.wape !== undefined && metadata.baseline_metrics?.wape !== undefined && (
+              <div className="metric-grid mt-16 mb-0">
+                <MetricCard
+                  label="WAPE (Holdout Temporal)"
+                  value={`${(metadata.model_metrics.wape * 100).toFixed(1)}%`}
+                  delta={`baseline: ${(metadata.baseline_metrics.wape * 100).toFixed(1)}%`}
+                  deltaTone={metadata.beats_baseline ? "positive" : "negative"}
+                />
+                {metadata.model_metrics.cv_mae_mean !== undefined && (
+                  <MetricCard
+                    label={`MAE em CV (${metadata.validation?.cv_splits ?? 4} folds temporais)`}
+                    value={`${metadata.model_metrics.cv_mae_mean.toFixed(2)} ± ${(metadata.model_metrics.cv_mae_std ?? 0).toFixed(2)}`}
+                  />
+                )}
+                {metadata.elasticity_check && (
+                  <MetricCard
+                    label="Curvas de Elasticidade Válidas"
+                    value={`${(metadata.elasticity_check.monotonic_share * 100).toFixed(0)}% de ${metadata.elasticity_check.products_checked} produtos`}
+                    deltaTone={metadata.elasticity_check.monotonic_share >= 0.8 ? "positive" : "negative"}
+                  />
+                )}
+              </div>
+            )}
+
+            {metadata.validation && (
+              <p className="text-muted mt-16" style={{ marginBottom: 0 }}>
+                🧪 Validação: {metadata.validation.scheme} — {metadata.validation.train_rows} obs de treino,{" "}
+                {metadata.validation.holdout_rows} de holdout (janela {metadata.validation.training_window.start} →{" "}
+                {metadata.validation.training_window.end}). Seleção: {metadata.selection_criteria}.
+              </p>
+            )}
           </div>
 
           <div className="card">

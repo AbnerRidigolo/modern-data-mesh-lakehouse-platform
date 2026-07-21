@@ -84,12 +84,37 @@ export interface PricingDetails {
   revenue_lift_pct: number;
 }
 
+export interface ModelMetrics {
+  r2_score: number;
+  mae: number;
+  rmse?: number;
+  wape?: number;
+  cv_mae_mean?: number;
+  cv_mae_std?: number;
+  cv_wape_mean?: number;
+  elasticity_monotonic_share?: number;
+}
+
 export interface PricingMetadata {
-  model_metrics: { r2_score: number; mae: number };
+  model_metrics: ModelMetrics;
   feature_columns: string[];
   product_one_hot_columns: string[];
   optimal_prices: Record<string, PricingDetails>;
   last_trained: string;
+  champion_model?: string;
+  beats_baseline?: boolean;
+  selection_criteria?: string;
+  baseline_metrics?: ModelMetrics;
+  candidate_metrics?: Record<string, ModelMetrics>;
+  validation?: {
+    scheme: string;
+    holdout_days: number;
+    cv_splits: number;
+    train_rows: number;
+    holdout_rows: number;
+    training_window: { start: string; end: string };
+  };
+  elasticity_check?: { products_checked: number; monotonic_share: number };
 }
 
 export interface DriftProductStatus {

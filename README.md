@@ -18,7 +18,7 @@ A plataforma foi desenhada seguindo o ciclo de vida clássico da engenharia de d
 | **Disponibilização** | FastAPI (DaaS) com cache Redis, busca vetorial Qdrant e portal React |
 | **Armazenamento** | Delta Lake (local ou S3/MinIO) com ACID, Time Travel e schema evolution; DuckDB como DW analítico |
 | **Análise** | Dashboard de KPIs, curvas de elasticidade de preço, search analytics |
-| **Machine Learning** | Treino de Random Forest (precificação dinâmica), tracking MLflow, monitoramento de drift (KS test + Evidently) |
+| **Machine Learning** | Pipeline de precificação com **validação temporal** (holdout + TimeSeriesSplit), **baseline obrigatório**, comparação de candidatos com **restrição de monotonicidade** preço→demanda, seleção com **gate de validade econômica**, WAPE/RMSE/MAE/R², tracking MLflow (nested runs) e monitoramento de drift (KS test + Evidently) |
 | **IA Generativa / LLM** 🤖 | **AI Copilot** com Claude (Anthropic SDK): loop agêntico com tool use, text-to-SQL com guardrails sobre o DuckDB, RAG via busca vetorial Qdrant, trace de ferramentas auditável, prompt caching e tratamento de refusals |
 | **Segurança** 🔐 | JWT com segredo via env var, senha admin com hash bcrypt, CORS restrito, rate limit no login — **zero segredos hardcoded** |
 | **Gerenciamento de dados** | Catálogo de domínios com contratos documentados, quarentena auditável, lineage dbt |
@@ -142,7 +142,7 @@ graph TD
 6. **FastAPI (DaaS API Gateway)**: Exposição de dados analíticos via endpoints HTTP autenticados (JWT), organizados em routers modulares, isolando o banco de dados de acessos diretos de terceiros.
 7. **Redis (Caching Layer)**: Armazenamento chave-valor em memória cacheando resultados analíticos da API com TTL para latências inferiores a 1ms.
 8. **Pydantic v2 (Data Contracts)**: Validação rígida de esquemas na entrada do pipeline. Qualquer dado corrompido é enviado para a quarentena de auditoria.
-9. **MLflow Tracking**: Servidor centralizado para controle de ciclo de vida de modelos, logging de parâmetros, métricas de regressão ($R^2$ e MAE) e artefatos de treinamento.
+9. **MLflow Tracking & Pipeline de ML com Rigor Estatístico**: O treinamento de precificação segue práticas de cientista de dados sênior — **split temporal** (nunca aleatório: evita vazamento de futuro em séries temporais), **TimeSeriesSplit CV** para seleção, **baseline de mediana por produto** como piso de qualidade, candidatos comparados (Random Forest vs HistGradientBoosting com `monotonic_cst`), **gate de validade econômica** (o campeão precisa produzir curvas de elasticidade não-crescentes — um modelo com WAPE melhor mas curvas absurdas é reprovado), métricas WAPE/RMSE/MAE/R², **feature engineering compartilhada entre treino e servimento** (zero training-serving skew) e MLflow com nested runs por candidato + model registry.
 10. **Drift Monitor & Time Travel**: Análise estatística de desvio de dados (Kolmogorov-Smirnov + Evidently AI) e suporte a carregamento de dados históricos do Delta Lake para retreino retroativo reprodutível.
 11. **React + TypeScript (Portal BI & Governança)**: SPA (Vite + React Query + Recharts) que consome o DaaS API Gateway via JWT e integra catálogo de governança, lineage dbt dinâmico (grafo SVG), monitoramento de drift de ML, gráficos de KPIs, comparador de histórico de commits do Delta Lake com Rollback físico, busca semântica vetorial e observabilidade de Data Quality.
 12. **Qdrant & FastEmbed**: Banco de dados vetorial corporativo (Qdrant) integrado com pipeline leve de embeddings em ONNX (FastEmbed) para buscas semânticas em linguagem natural no catálogo de produtos.
@@ -326,10 +326,12 @@ O workflow `.github/workflows/ci.yml` roda em cada push/PR para `main` com três
 
 ## 🕰️ Testando os Recursos "Outro Nível"
 
-### 1. MLflow Tracking UI
-Acesse 👉 **[http://localhost:5001](http://localhost:5001)** para verificar o painel de experimentos. Toda vez que o modelo é retreinado via Airflow:
-* Um run é criado na plataforma "Dynamic Pricing Optimization".
-* Hiperparâmetros, R2 Score, MAE e o arquivo de metadados JSON de otimização de preços são salvos e versionados automaticamente como artefatos.
+### 1. MLflow Tracking UI & Seleção de Modelo com Rigor
+Acesse 👉 **[http://localhost:5001](http://localhost:5001)** para verificar o painel de experimentos. Toda vez que o pipeline é retreinado via Airflow:
+* Um run pai "pricing_training" é criado com **nested runs por candidato** (baseline de mediana por produto, Random Forest, HistGradientBoosting com restrição de monotonicidade).
+* Cada candidato registra métricas de **holdout temporal** (WAPE, MAE, RMSE, R²) e de **TimeSeriesSplit CV** (média ± desvio).
+* O campeão passa por um **gate de validade econômica**: só é elegível se ≥80% das curvas preço→demanda forem não-crescentes — o resultado (incluindo candidatos reprovados) fica auditável em `pricing_metadata.json` e na página **MLOps: Precificação** do portal.
+* O modelo campeão é registrado no MLflow Model Registry como `pricing_champion`.
 
 ### 2. Linhagem dbt Dinâmica (Lineage Graph)
 Acesse a página **Catálogo Data Mesh** no portal React para visualizar o grafo de dependências compilado em tempo real a partir de `manifest.json` (endpoint `GET /api/v1/lineage`). O portal renderiza os fluxos de dados de Staging, Dimensões, Fatos e ML Features em um grafo SVG com cores por camada.

@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from domains.common.paths import get_model_dir
+from domains.ml_pricing.features import build_feature_row
 
 from ..deps import cache
 from ..security import get_current_user
@@ -128,15 +129,15 @@ def simulate_pricing(payload: SimulationRequest, current_user: str = Depends(get
     feature_cols = metadata["feature_columns"]
     product_cols = metadata["product_one_hot_columns"]
 
-    row = {
-        "price": payload.price,
-        "competitor_price": prod_details["competitor_price"],
-        "day_of_week": 6 if payload.is_weekend else 3,
-        "is_weekend": 1 if payload.is_weekend else 0,
-    }
-    for col in product_cols:
-        row[col] = 1 if col == f"prod_{matched_name}" else 0
-
+    # Mesmo construtor de features usado no treinamento — sem training-serving skew
+    row = build_feature_row(
+        product_name=matched_name,
+        price=payload.price,
+        competitor_price=prod_details["competitor_price"],
+        day_of_week=6 if payload.is_weekend else 3,
+        is_weekend=1 if payload.is_weekend else 0,
+        product_columns=product_cols,
+    )
     sim_df = pd.DataFrame([row])[feature_cols]
     demand = float(model.predict(sim_df)[0])
     revenue = payload.price * demand
