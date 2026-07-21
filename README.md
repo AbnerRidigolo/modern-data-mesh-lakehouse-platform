@@ -1,8 +1,8 @@
 # Enterprise Data Mesh & Lakehouse Platform
 
-**Delta Lake · Airflow · dbt · DuckDB · FastAPI · Redis · MLflow · Qdrant · React + TypeScript**
+**Delta Lake · Airflow · dbt · DuckDB · FastAPI · Redis · MLflow · Qdrant · Claude (LLM) · React + TypeScript**
 
-Este projeto implementa uma **Plataforma de Dados de Nível de Produtividade Industrial (Lead/Staff Data Engineer & MLOps)**. Ela utiliza o paradigma de **Data Mesh** (domínios descentralizados expostos como produtos de dados), armazenamento colunar transacional (**Lakehouse com Delta Lake**), engenharia de analytics (**dbt Core + DuckDB**), servimento performático (**FastAPI + cache Redis**), modelagem e ciclo de vida de ML (**MLflow + Random Forest + Drift Monitor**), busca semântica vetorial (**Qdrant + FastEmbed**), observabilidade de qualidade de dados (**Data Quality Engine**), orquestração automatizada (**Apache Airflow**) e um **Portal de Governança em React + TypeScript** consumindo tudo via API autenticada com JWT.
+Este projeto implementa uma **Plataforma de Dados e IA de Nível de Produtividade Industrial (Data Engineering + AI Engineering)**. Ela utiliza o paradigma de **Data Mesh** (domínios descentralizados expostos como produtos de dados), armazenamento colunar transacional (**Lakehouse com Delta Lake**), engenharia de analytics (**dbt Core + DuckDB**), servimento performático (**FastAPI + cache Redis**), modelagem e ciclo de vida de ML (**MLflow + Random Forest + Drift Monitor**), busca semântica vetorial (**Qdrant + FastEmbed**), um **AI Copilot com LLM (Claude) orquestrado via tool use** — text-to-SQL com guardrails e RAG sobre o catálogo —, observabilidade de qualidade de dados (**Data Quality Engine**), orquestração automatizada (**Apache Airflow**) e um **Portal de Governança em React + TypeScript** consumindo tudo via API autenticada com JWT.
 
 ---
 
@@ -19,6 +19,7 @@ A plataforma foi desenhada seguindo o ciclo de vida clássico da engenharia de d
 | **Armazenamento** | Delta Lake (local ou S3/MinIO) com ACID, Time Travel e schema evolution; DuckDB como DW analítico |
 | **Análise** | Dashboard de KPIs, curvas de elasticidade de preço, search analytics |
 | **Machine Learning** | Treino de Random Forest (precificação dinâmica), tracking MLflow, monitoramento de drift (KS test + Evidently) |
+| **IA Generativa / LLM** 🤖 | **AI Copilot** com Claude (Anthropic SDK): loop agêntico com tool use, text-to-SQL com guardrails sobre o DuckDB, RAG via busca vetorial Qdrant, trace de ferramentas auditável, prompt caching e tratamento de refusals |
 | **Segurança** 🔐 | JWT com segredo via env var, senha admin com hash bcrypt, CORS restrito, rate limit no login — **zero segredos hardcoded** |
 | **Gerenciamento de dados** | Catálogo de domínios com contratos documentados, quarentena auditável, lineage dbt |
 | **DataOps** | CI GitHub Actions (lint ruff + pytest backend + typecheck/build frontend), testes dbt + dbt-expectations, testes unitários do DQ Engine, métricas Prometheus em `/metrics` |
@@ -99,6 +100,7 @@ graph TD
 │   ├── security.py           # JWT, bcrypt e rate limit de login
 │   ├── deps.py               # Dependências compartilhadas (DuckDB, Redis, Qdrant)
 │   ├── cache.py              # Wrapper Redis com fallback em memória
+│   ├── services/copilot.py   # AI Copilot: loop agêntico Claude + tools (SQL/RAG)
 │   └── routers/              # Endpoints por domínio funcional
 │       ├── auth.py           #   POST /api/v1/auth/token
 │       ├── kpis.py           #   KPIs, clientes e cache
@@ -145,6 +147,34 @@ graph TD
 11. **React + TypeScript (Portal BI & Governança)**: SPA (Vite + React Query + Recharts) que consome o DaaS API Gateway via JWT e integra catálogo de governança, lineage dbt dinâmico (grafo SVG), monitoramento de drift de ML, gráficos de KPIs, comparador de histórico de commits do Delta Lake com Rollback físico, busca semântica vetorial e observabilidade de Data Quality.
 12. **Qdrant & FastEmbed**: Banco de dados vetorial corporativo (Qdrant) integrado com pipeline leve de embeddings em ONNX (FastEmbed) para buscas semânticas em linguagem natural no catálogo de produtos.
 13. **Data Quality Observability**: Motor customizado de qualidade de dados integrado no Airflow e DuckDB para monitorar anomalias de faturamento, integridade referencial, volume diário e quedas bruscas de vendas.
+14. **AI Copilot (Claude / Anthropic SDK)**: Assistente analítico com **LLM orquestrado via tool use** — o modelo decide entre executar **text-to-SQL com guardrails** (apenas `SELECT`/`WITH` em conexão DuckDB read-only, statement único, LIMIT imposto, blocklist de DDL/DML) ou fazer **RAG com a busca vetorial Qdrant** do catálogo. Loop agêntico manual com trace auditável de cada ferramenta (a UI mostra o SQL executado), prompt caching do system prompt, tratamento de `refusal` e degradação graciosa sem credencial.
+
+---
+
+## 🤖 AI Engineering: o Copilot Analítico
+
+A camada de IA generativa demonstra o ciclo completo de engenharia de LLM em produção:
+
+```
+Pergunta em linguagem natural (React chat)
+        │ POST /api/v1/copilot/chat (JWT)
+        ▼
+FastAPI ──► Claude (claude-opus-4-8, adaptive thinking, prompt caching)
+        │        │
+        │        ├── tool: query_analytics_dw ──► guardrails SQL ──► DuckDB (read-only)
+        │        └── tool: search_products_semantic ──► FastEmbed ──► Qdrant
+        ▼
+Resposta + tool_trace auditável (SQL executado, erros, tokens)
+```
+
+**Decisões de engenharia:**
+* **Guardrails em profundidade**: validação sintática (regex de DDL/DML, statement único, apenas `SELECT`/`WITH`) *e* conexão DuckDB aberta em `read_only=True` — o SQL gerado pelo modelo nunca consegue escrever.
+* **Transparência**: cada chamada de ferramenta vira um item no `tool_trace` retornado à UI — o usuário audita exatamente qual SQL foi executado.
+* **Grounding no schema real**: o system prompt documenta as tabelas dos marts dbt, e o modelo responde "não sei" quando os dados não cobrem a pergunta.
+* **Resiliência**: erros de ferramenta voltam ao modelo como `tool_result` com `is_error` (o modelo se recupera), `stop_reason: refusal` é tratado, e erros do provedor viram HTTP 429/502/503 tipados.
+* **Custo**: system prompt com `cache_control` (prompt caching), histórico enxuto (somente texto), limite de iterações de ferramenta.
+
+Para ativar: `export ANTHROPIC_API_KEY=sk-ant-...` antes do `docker compose up` (ou no ambiente do uvicorn). Sem a chave, a plataforma funciona normalmente e o Copilot responde 503 com instrução clara.
 
 ---
 
@@ -175,6 +205,8 @@ Todos os endpoints (exceto `/` e o login) exigem `Authorization: Bearer <token>`
 | `GET` | `/api/v1/lineage` | Grafo de linhagem dbt (manifest.json) |
 | `GET` | `/api/v1/catalog/domains` | Catálogo de domínios + contratos |
 | `GET` | `/api/v1/quarantine/{domain}` | Violações de contrato em quarentena |
+| `GET` | `/api/v1/copilot/status` | Status do AI Copilot (habilitado + modelo) |
+| `POST` | `/api/v1/copilot/chat` | Chat com o AI Copilot (LLM + tool use + trace auditável) |
 | `GET` | `/metrics` | Métricas Prometheus (contadores e histogramas de latência por rota) |
 
 Documentação Swagger interativa: **[http://localhost:8000/docs](http://localhost:8000/docs)**
@@ -270,6 +302,8 @@ O ambiente sobe pronto para uso local (`admin` / `adminpassword`), mas **nenhum 
 | `ADMIN_PASSWORD_HASH` | Hash bcrypt da senha do admin | Usa hash da senha padrão e **loga aviso** |
 | `FRONTEND_ORIGINS` | Origens permitidas no CORS (separadas por vírgula) | Libera apenas `localhost` (dev/preview) |
 | `LOGIN_MAX_ATTEMPTS` / `LOGIN_LOCKOUT_SECONDS` | Rate limit do login | `5` tentativas / `60`s de bloqueio |
+| `ANTHROPIC_API_KEY` | Credencial do AI Copilot (Claude) | Copilot desabilitado (API responde 503) |
+| `COPILOT_MODEL` | Modelo do Copilot | `claude-opus-4-8` |
 
 Para gerar um novo hash de senha:
 ```bash

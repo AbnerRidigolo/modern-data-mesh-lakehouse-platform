@@ -30,3 +30,4 @@ bcrypt==4.2.1
 evidently==0.4.31
 python-multipart==0.0.32
 prometheus-fastapi-instrumentator==7.0.0
+anthropic==0.117.0

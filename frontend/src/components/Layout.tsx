@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: "/catalog", label: "🕸️ Catálogo Data Mesh" },
   { to: "/mlops", label: "📈 MLOps: Precificação" },
   { to: "/search", label: "🔍 Busca Semântica" },
+  { to: "/copilot", label: "🤖 AI Copilot" },
   { to: "/data-quality", label: "✅ Data Quality" },
 ];
 

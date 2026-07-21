@@ -165,3 +165,26 @@ export interface DataQualityHistoryEntry {
   total_tests: number;
   status: "Passed" | "Failed";
 }
+
+export interface CopilotStatus {
+  enabled: boolean;
+  model: string | null;
+}
+
+export interface CopilotToolTrace {
+  tool: string;
+  input: Record<string, unknown>;
+  is_error: boolean;
+  result_preview: string;
+}
+
+export interface CopilotChatResponse {
+  answer: string;
+  tool_trace: CopilotToolTrace[];
+  usage: { input_tokens: number; output_tokens: number };
+}
+
+export interface CopilotTurn {
+  role: "user" | "assistant";
+  content: string;
+}

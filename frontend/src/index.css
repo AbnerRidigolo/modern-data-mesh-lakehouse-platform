@@ -459,3 +459,70 @@ table.data-table th {
 .justify-between {
   justify-content: space-between;
 }
+
+/* --- AI Copilot chat --- */
+.copilot-window {
+  max-height: 55vh;
+  min-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.copilot-msg {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+}
+
+.copilot-msg.user {
+  align-self: flex-end;
+  border-color: var(--accent-blue);
+}
+
+.copilot-msg.assistant {
+  align-self: flex-start;
+  border-left: 3px solid var(--accent-green);
+}
+
+.copilot-msg.error {
+  border-left: 3px solid var(--accent-red);
+}
+
+.copilot-msg-role {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.copilot-msg-body {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.copilot-trace {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.copilot-sql {
+  background: #0b1220;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  overflow-x: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.copilot-input-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}

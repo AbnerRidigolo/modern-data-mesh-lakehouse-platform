@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import Layout from "./components/Layout";
 import CatalogPage from "./pages/CatalogPage";
+import CopilotPage from "./pages/CopilotPage";
 import DashboardPage from "./pages/DashboardPage";
 import DataQualityPage from "./pages/DataQualityPage";
 import LoginPage from "./pages/LoginPage";
@@ -27,6 +28,7 @@ function AppRoutes() {
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/mlops" element={<MLOpsPage />} />
         <Route path="/search" element={<SearchPage />} />
+        <Route path="/copilot" element={<CopilotPage />} />
         <Route path="/data-quality" element={<DataQualityPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

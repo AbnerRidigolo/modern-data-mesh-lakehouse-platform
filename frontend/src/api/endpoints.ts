@@ -2,6 +2,9 @@ import { apiClient } from "./client";
 import type {
   ApiEnvelope,
   CatalogDomains,
+  CopilotChatResponse,
+  CopilotStatus,
+  CopilotTurn,
   DataQualityHistoryEntry,
   DataQualityReport,
   DeltaHistoryEntry,
@@ -125,5 +128,15 @@ export async function getDataQualityReport(): Promise<DataQualityReport> {
 
 export async function getDataQualityHistory(limit = 30): Promise<DataQualityHistoryEntry[]> {
   const resp = await apiClient.get("/api/v1/data-quality/history", { params: { limit } });
+  return resp.data;
+}
+
+export async function getCopilotStatus(): Promise<CopilotStatus> {
+  const resp = await apiClient.get("/api/v1/copilot/status");
+  return resp.data;
+}
+
+export async function copilotChat(message: string, history: CopilotTurn[]): Promise<CopilotChatResponse> {
+  const resp = await apiClient.post("/api/v1/copilot/chat", { message, history });
   return resp.data;
 }
