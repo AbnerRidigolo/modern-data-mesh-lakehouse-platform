@@ -1,5 +1,21 @@
+{{
+    config(
+        materialized='incremental',
+        unique_key='sale_id',
+        incremental_strategy='delete+insert',
+    )
+}}
+
 WITH sales AS (
     SELECT * FROM {{ ref('stg_sales') }}
+    {% if is_incremental() %}
+    -- Processa apenas vendas mais recentes que o watermark já materializado,
+    -- com 1 dia de lookback para absorver eventos atrasados (late-arriving data)
+    WHERE sale_date > (
+        SELECT COALESCE(MAX(sale_date), TIMESTAMP '1900-01-01') - INTERVAL 1 DAY
+        FROM {{ this }}
+    )
+    {% endif %}
 ),
 
 deduped_sales AS (

@@ -1,7 +1,7 @@
-import pytest
-from fastapi.testclient import TestClient
-import sys
 import os
+import sys
+
+from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -46,7 +46,7 @@ def test_secured_endpoint_with_valid_token():
         data={"username": "admin", "password": "adminpassword"}
     )
     token = token_response.json()["access_token"]
-    
+
     # Request secured endpoint
     response = client.get(
         "/api/v1/kpis",

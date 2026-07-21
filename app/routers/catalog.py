@@ -4,10 +4,11 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..security import get_current_user
 from domains.common.paths import get_quarantine_dir
 from domains.crm.contract import CustomerContract
 from domains.ecommerce.contract import SaleContract
+
+from ..security import get_current_user
 
 logger = logging.getLogger("API_Catalog")
 router = APIRouter(prefix="/api/v1", tags=["catalog"])
@@ -88,7 +89,7 @@ def get_quarantine_file(domain: str, file_name: str, current_user: str = Depends
     if not os.path.exists(file_path) or not os.path.abspath(file_path).startswith(os.path.abspath(q_dir)):
         raise HTTPException(status_code=404, detail="Arquivo de quarentena não encontrado.")
 
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         content = f.read()
 
     try:

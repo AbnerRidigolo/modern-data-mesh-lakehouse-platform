@@ -14,17 +14,17 @@ A plataforma foi desenhada seguindo o ciclo de vida clássico da engenharia de d
 |---|---|
 | **Geração** | Fontes simuladas de CRM e E-Commerce (`domains/generate_mock_data.py`) produzindo JSONs brutos |
 | **Ingestão** | Polars (CRM) e PySpark (E-Commerce) com **Data Contracts Pydantic** e quarentena de violações |
-| **Transformação** | dbt Core sobre DuckDB — staging → dimensões/fatos (Kimball) → marts de KPI e features de ML |
+| **Transformação** | dbt Core sobre DuckDB — staging → dimensões/fatos (Kimball) → marts de KPI, LTV/RFM e features de ML, com **modelo incremental** (`fct_sales`) e **snapshot SCD Type 2** de clientes |
 | **Disponibilização** | FastAPI (DaaS) com cache Redis, busca vetorial Qdrant e portal React |
 | **Armazenamento** | Delta Lake (local ou S3/MinIO) com ACID, Time Travel e schema evolution; DuckDB como DW analítico |
 | **Análise** | Dashboard de KPIs, curvas de elasticidade de preço, search analytics |
 | **Machine Learning** | Treino de Random Forest (precificação dinâmica), tracking MLflow, monitoramento de drift (KS test + Evidently) |
 | **Segurança** 🔐 | JWT com segredo via env var, senha admin com hash bcrypt, CORS restrito, rate limit no login — **zero segredos hardcoded** |
 | **Gerenciamento de dados** | Catálogo de domínios com contratos documentados, quarentena auditável, lineage dbt |
-| **DataOps** | CI GitHub Actions (pytest backend + typecheck/build frontend), testes dbt + dbt-expectations, Data Quality Engine com histórico |
+| **DataOps** | CI GitHub Actions (lint ruff + pytest backend + typecheck/build frontend), testes dbt + dbt-expectations, testes unitários do DQ Engine, métricas Prometheus em `/metrics` |
 | **Arquitetura de dados** | Data Mesh (domínios donos dos seus produtos), Lakehouse em camadas, Star Schema |
 | **Orquestração** | Apache Airflow com DAG unificada e dependências explícitas entre ingestão, DW, ML, vetores e DQ |
-| **Engenharia de software** | Backend modular (routers FastAPI + módulos compartilhados), frontend tipado (TypeScript), paths centralizados, testes automatizados |
+| **Engenharia de software** | Backend modular (routers FastAPI + módulos compartilhados), frontend tipado (TypeScript), paths centralizados, linting ruff, testes automatizados |
 
 ---
 
@@ -119,11 +119,13 @@ graph TD
 │   ├── crm/                  # Contrato Pydantic + ingestão Polars
 │   ├── ecommerce/            # Contrato Pydantic + ingestão PySpark
 │   └── ml_pricing/           # Treino, drift, indexação Qdrant, Data Quality
-├── analytics_dw/             # Projeto dbt (staging, marts, seeds, testes)
+├── analytics_dw/             # Projeto dbt (staging, marts, snapshots SCD2, seeds, testes)
+│   └── snapshots/            # customers_snapshot: historização SCD Type 2
 ├── dags/                     # DAGs do Apache Airflow
-├── tests/                    # Testes pytest (contratos + API + endpoints)
+├── tests/                    # Testes pytest (contratos + API + endpoints + DQ engine)
+├── ruff.toml                 # Configuração de linting Python
 ├── docker-compose.yml        # Infraestrutura completa (9 serviços)
-└── .github/workflows/ci.yml  # CI: backend-test (pytest) + frontend-build (tsc/vite)
+└── .github/workflows/ci.yml  # CI: lint (ruff) + backend-test (pytest) + frontend-build (tsc/vite)
 ```
 
 ---
@@ -134,7 +136,7 @@ graph TD
 2. **PySpark (E-Commerce Sales)**: Processamento distribuído de alto rendimento simulando Big Data, gravando dados particionados por `status`.
 3. **Polars (CRM Customers)**: Motor de DataFrames em Rust ultra-rápido para processamento eficiente em memória de cadastros estruturados.
 4. **Delta Lake (Lakehouse)**: Armazenamento analítico colunar transacional com suporte a transações ACID, versionamento de dados (Time Travel) e evolução de esquema (`mergeSchema`).
-5. **dbt Core & DuckDB**: Criação de Dimensões, Fatos (Kimball Star Schema) e KPI Marts analíticos, com testes de schema (`unique`, `not_null`, `accepted_values`, dbt-expectations) e geração automática de documentação e grafo de linhagem.
+5. **dbt Core & DuckDB**: Criação de Dimensões, Fatos (Kimball Star Schema) e KPI Marts analíticos, com **materialização incremental** (`fct_sales` com watermark e lookback para late-arriving data), **snapshot SCD Type 2** (histórico de mudanças cadastrais), mart de **LTV/segmentação RFM**, testes de schema (`unique`, `not_null`, `accepted_values`, dbt-expectations) e geração automática de documentação e grafo de linhagem. A origem do lakehouse é parametrizada via `LAKEHOUSE_ROOT` (roda local ou S3/MinIO).
 6. **FastAPI (DaaS API Gateway)**: Exposição de dados analíticos via endpoints HTTP autenticados (JWT), organizados em routers modulares, isolando o banco de dados de acessos diretos de terceiros.
 7. **Redis (Caching Layer)**: Armazenamento chave-valor em memória cacheando resultados analíticos da API com TTL para latências inferiores a 1ms.
 8. **Pydantic v2 (Data Contracts)**: Validação rígida de esquemas na entrada do pipeline. Qualquer dado corrompido é enviado para a quarentena de auditoria.
@@ -154,7 +156,8 @@ Todos os endpoints (exceto `/` e o login) exigem `Authorization: Bearer <token>`
 |---|---|---|
 | `POST` | `/api/v1/auth/token` | Login OAuth2 (form) → token JWT |
 | `GET` | `/api/v1/kpis` | KPIs mensais consolidados (cacheado) |
-| `GET` | `/api/v1/customers` | Dimensão de clientes (cacheado) |
+| `GET` | `/api/v1/customers` | Dimensão de clientes com paginação (`page`, `page_size`) |
+| `GET` | `/api/v1/customers/ltv` | Mart de LTV + segmentação RFM (filtro por `segment`) |
 | `POST` | `/api/v1/cache/clear` | Limpa o cache Redis/memória |
 | `GET` | `/api/v1/predict/optimal-price` | Preço ótimo P* por produto |
 | `GET` | `/api/v1/ml/pricing-metadata` | Métricas do modelo + otimizações |
@@ -172,6 +175,7 @@ Todos os endpoints (exceto `/` e o login) exigem `Authorization: Bearer <token>`
 | `GET` | `/api/v1/lineage` | Grafo de linhagem dbt (manifest.json) |
 | `GET` | `/api/v1/catalog/domains` | Catálogo de domínios + contratos |
 | `GET` | `/api/v1/quarantine/{domain}` | Violações de contrato em quarentena |
+| `GET` | `/metrics` | Métricas Prometheus (contadores e histogramas de latência por rota) |
 
 Documentação Swagger interativa: **[http://localhost:8000/docs](http://localhost:8000/docs)**
 
@@ -278,9 +282,10 @@ Para qualquer ambiente além do uso local, defina `JWT_SECRET_KEY` e `ADMIN_PASS
 
 ## ⚙️ CI/CD (GitHub Actions)
 
-O workflow `.github/workflows/ci.yml` roda em cada push/PR para `main` com dois jobs paralelos:
+O workflow `.github/workflows/ci.yml` roda em cada push/PR para `main` com três jobs paralelos:
 
-* **`backend-test`**: Python 3.11 + `pip install -r requirements.txt` + `pytest tests/`.
+* **`lint`**: `ruff check .` — estilo, imports, bugs prováveis (flake8-bugbear) e sintaxe moderna (pyupgrade).
+* **`backend-test`**: Python 3.11 + `pip install -r requirements.txt` + `pytest tests/` (contratos, auth JWT, endpoints e testes unitários do Data Quality Engine).
 * **`frontend-build`**: Node 20 + `npm ci` + `npm run build` (typecheck TypeScript + build Vite).
 
 ---

@@ -39,6 +39,27 @@ models:
           - unique
           - not_null
 
+  - name: dm_customer_ltv
+    description: "Mart de valor do cliente: LTV, ticket médio e segmentação RFM (Recency/Frequency/Monetary) sobre vendas concluídas"
+    columns:
+      - name: customer_id
+        description: "Chave primária do cliente"
+        tests:
+          - unique
+          - not_null
+      - name: lifetime_value
+        description: "Faturamento total acumulado do cliente"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+      - name: rfm_segment
+        description: "Segmento comportamental derivado dos quintis RFM"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Champion', 'Loyal', 'New / Promising', 'At Risk', 'Hibernating', 'Regular']
+
   - name: dim_products
     description: "Dimensão de produtos derivada do seed do catálogo, usada para busca semântica vetorial"
     columns:

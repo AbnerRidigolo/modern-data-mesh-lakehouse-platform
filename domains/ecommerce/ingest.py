@@ -1,8 +1,10 @@
-import os
 import json
 import logging
+import os
 from datetime import datetime
+
 from pydantic import ValidationError
+
 try:
     from .contract import SaleContract
 except ImportError:
@@ -18,7 +20,7 @@ def run_ingestion():
     raw_dir = os.path.join(base_dir, "storage", "raw", "sales_data")
     delta_path = os.path.join(base_dir, "storage", "lakehouse", "ecommerce", "sales")
     quarantine_dir = os.path.join(base_dir, "storage", "raw", "quarantine", "ecommerce")
-    
+
     os.makedirs(quarantine_dir, exist_ok=True)
 
     if not os.path.exists(raw_dir) or not os.listdir(raw_dir):
@@ -32,14 +34,14 @@ def run_ingestion():
     for file_name in os.listdir(raw_dir):
         if not file_name.endswith(".json"):
             continue
-            
+
         file_path = os.path.join(raw_dir, file_name)
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
-                
+
             records = data if isinstance(data, list) else [data]
-            
+
             for record in records:
                 try:
                     # Validate against Data Contract
@@ -55,10 +57,10 @@ def run_ingestion():
                     quarantine_file = os.path.join(quarantine_dir, f"error_{datetime.now().timestamp()}_{record.get('sale_id', 'unknown')}.json")
                     with open(quarantine_file, "w", encoding="utf-8") as qf:
                         json.dump({"record": record, "errors": json.loads(e.json()), "timestamp": str(datetime.now())}, qf, indent=2)
-                        
+
             # Archive/delete processed file
             os.remove(file_path)
-            
+
         except Exception as e:
             logger.error(f"Erro ao processar arquivo {file_name}: {e}")
 
@@ -70,8 +72,8 @@ def run_ingestion():
 
     # E-Commerce Domain Stack: Apache Spark (PySpark)
     logger.info("Inicializando PySpark Session...")
-    from pyspark.sql import SparkSession
     from delta import configure_spark_with_delta_pip
+    from pyspark.sql import SparkSession
 
     s3_enabled = os.environ.get("AWS_ACCESS_KEY_ID") is not None
     bucket_name = "lakehouse"
@@ -92,7 +94,7 @@ def run_ingestion():
         endpoint = os.environ.get("MINIO_ENDPOINT_URL", "http://localhost:9000")
         aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID", "minioadmin")
         aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "minioadmin")
-        
+
         builder = builder \
             .config("spark.hadoop.fs.s3a.endpoint", endpoint) \
             .config("spark.hadoop.fs.s3a.access.key", aws_access_key) \
@@ -100,10 +102,10 @@ def run_ingestion():
             .config("spark.hadoop.fs.s3a.path.style.access", "true") \
             .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
             .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-            
+
         spark = configure_spark_with_delta_pip(builder, extra_packages=["org.apache.hadoop:hadoop-aws:3.3.4"]).getOrCreate()
         delta_path = f"s3a://{bucket_name}/ecommerce/sales"
-        
+
         # Ensure bucket exists
         try:
             import boto3
@@ -126,12 +128,12 @@ def run_ingestion():
             logger.error(f"Erro ao verificar/criar bucket S3: {e}")
     else:
         spark = configure_spark_with_delta_pip(builder).getOrCreate()
-    
+
     try:
         logger.info("Convertendo registros válidos em Spark DataFrame...")
         # Spark can create DataFrame directly from list of dicts
         df = spark.createDataFrame(valid_records)
-        
+
         # Write to Delta Lake partitioned by status
         logger.info(f"Gravando dados em formato Delta Lake (particionado por status) em: {delta_path}")
         df.write \
@@ -141,7 +143,7 @@ def run_ingestion():
             .partitionBy("status") \
             .save(delta_path)
         logger.info("Escrita no Delta Lake via PySpark concluída com sucesso.")
-        
+
     finally:
         logger.info("Fechando Spark Session...")
         spark.stop()

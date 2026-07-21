@@ -1,11 +1,14 @@
 version: 2
 
+# Nota de modelagem: a camada de staging lê o Delta Lake append-only, então
+# reprocessamentos legítimos geram múltiplas versões do mesmo registro aqui.
+# A unicidade é garantida (e testada) nas dimensões/fatos, onde ocorre a
+# deduplicação por chave natural.
 models:
   - name: stg_customers
     columns:
       - name: customer_id
         tests:
-          - unique
           - not_null
       - name: email
         tests:
@@ -22,7 +25,6 @@ models:
     columns:
       - name: sale_id
         tests:
-          - unique
           - not_null
       - name: customer_id
         tests:

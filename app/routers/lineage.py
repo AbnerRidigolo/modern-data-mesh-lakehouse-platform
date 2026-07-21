@@ -4,8 +4,9 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..security import get_current_user
 from domains.common.paths import get_dbt_manifest_path
+
+from ..security import get_current_user
 
 logger = logging.getLogger("API_Lineage")
 router = APIRouter(prefix="/api/v1/lineage", tags=["lineage"])
@@ -33,16 +34,16 @@ def get_dbt_lineage(current_user: str = Depends(get_current_user)):
         )
 
     try:
-        with open(manifest_path, "r", encoding="utf-8") as f:
+        with open(manifest_path, encoding="utf-8") as f:
             manifest = json.load(f)
     except Exception as e:
         logger.error(f"Erro ao carregar linhagem dbt: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     nodes = manifest.get("nodes", {})
     dag_nodes = {}
 
-    for node_id, node_info in nodes.items():
+    for node_info in nodes.values():
         if node_info.get("resource_type") == "model" and node_info.get("package_name") == "analytics_dw":
             name = node_info.get("name")
             depends_on = node_info.get("depends_on", {}).get("nodes", [])

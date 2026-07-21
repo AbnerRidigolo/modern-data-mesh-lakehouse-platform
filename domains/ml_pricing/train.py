@@ -1,16 +1,17 @@
-import os
+import argparse
 import json
 import logging
-import argparse
-import duckdb
-import pandas as pd
-import numpy as np
+import os
 from datetime import datetime
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import r2_score, mean_absolute_error
+
+import duckdb
 import joblib
+import numpy as np
+import pandas as pd
 from deltalake import DeltaTable
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split
 
 # Configure MLflow import safely
 try:
@@ -26,9 +27,9 @@ def train_model(sales_version: int = None, customers_version: int = None):
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     db_path = os.environ.get("DB_PATH", os.path.join(base_dir, "storage", "analytics.duckdb"))
     model_dir = os.path.join(base_dir, "storage", "model_registry")
-    
+
     os.makedirs(model_dir, exist_ok=True)
-    
+
     # Configure MLflow
     mlflow_enabled = False
     if mlflow is not None:
@@ -40,30 +41,30 @@ def train_model(sales_version: int = None, customers_version: int = None):
             logger.info(f"MLflow conectado com sucesso em: {mlflow_tracking_uri}")
         except Exception as e:
             logger.warning(f"Servidor MLflow inacessível em {mlflow_tracking_uri}: {e}. Rodando sem logs MLflow.")
-    
+
     # 1. Feature Preprocessing
     # Load dataset depending on whether Delta Time Travel is enabled
     if sales_version is not None or customers_version is not None:
         logger.info(f"Modo Time Travel Ativado. Sales Version: {sales_version}, Customers Version: {customers_version}")
         customers_delta_path = os.path.join(base_dir, "storage", "lakehouse", "crm", "customers")
         sales_delta_path = os.path.join(base_dir, "storage", "lakehouse", "ecommerce", "sales")
-        
+
         try:
             # Load specific versions
             dt_cust = DeltaTable(customers_delta_path, version=customers_version) if customers_version is not None else DeltaTable(customers_delta_path)
             dt_sales = DeltaTable(sales_delta_path, version=sales_version) if sales_version is not None else DeltaTable(sales_delta_path)
-            
+
             customers_raw = dt_cust.to_pandas()
             sales_raw = dt_sales.to_pandas()
-            
+
             # Connect to in-memory DuckDB and register DataFrames
             conn = duckdb.connect()
             conn.register("customers_raw", customers_raw)
             conn.register("sales_raw", sales_raw)
-            
+
             # Recreate views using SQL
             conn.execute("""
-            CREATE OR REPLACE TEMPORARY VIEW stg_customers AS 
+            CREATE OR REPLACE TEMPORARY VIEW stg_customers AS
             SELECT
                 CAST(id AS INT) AS customer_id,
                 TRIM(name) AS customer_name,
@@ -72,9 +73,9 @@ def train_model(sales_version: int = None, customers_version: int = None):
                 LOWER(status) AS status
             FROM customers_raw;
             """)
-            
+
             conn.execute("""
-            CREATE OR REPLACE TEMPORARY VIEW stg_sales AS 
+            CREATE OR REPLACE TEMPORARY VIEW stg_sales AS
             SELECT
                 CAST(sale_id AS INT) AS sale_id,
                 CAST(customer_id AS INT) AS customer_id,
@@ -85,9 +86,9 @@ def train_model(sales_version: int = None, customers_version: int = None):
                 CAST(sale_date AS TIMESTAMP) AS sale_date
             FROM sales_raw;
             """)
-            
+
             conn.execute("""
-            CREATE OR REPLACE TEMPORARY VIEW dim_customers AS 
+            CREATE OR REPLACE TEMPORARY VIEW dim_customers AS
             WITH customers AS (
                 SELECT * FROM stg_customers
             ),
@@ -106,9 +107,9 @@ def train_model(sales_version: int = None, customers_version: int = None):
             FROM deduped
             WHERE rn = 1;
             """)
-            
+
             conn.execute("""
-            CREATE OR REPLACE TEMPORARY VIEW fct_sales AS 
+            CREATE OR REPLACE TEMPORARY VIEW fct_sales AS
             WITH sales AS (
                 SELECT * FROM stg_sales
             ),
@@ -134,10 +135,10 @@ def train_model(sales_version: int = None, customers_version: int = None):
             LEFT JOIN customers c ON s.customer_id = c.customer_id
             WHERE s.rn = 1;
             """)
-            
+
             df = conn.execute("""
             WITH completed_sales AS (
-                SELECT * 
+                SELECT *
                 FROM fct_sales
                 WHERE status = 'COMPLETED'
             ),
@@ -163,7 +164,7 @@ def train_model(sales_version: int = None, customers_version: int = None):
                 CASE WHEN EXTRACT(dow FROM sale_date) IN (0, 6) THEN 1 ELSE 0 END AS is_weekend
             FROM daily_aggregation;
             """).fetchdf()
-            
+
             conn.close()
         except Exception as e:
             logger.error(f"Erro ao extrair dados no modo Time Travel: {e}")
@@ -172,33 +173,33 @@ def train_model(sales_version: int = None, customers_version: int = None):
         logger.info(f"Conectando ao DuckDB para extração de features: {db_path}")
         if not os.path.exists(db_path):
             raise FileNotFoundError(f"Banco de dados DuckDB não encontrado em: {db_path}")
-            
+
         conn = duckdb.connect(db_path, read_only=True)
         try:
             df = conn.execute("SELECT * FROM ml_features_pricing").fetchdf()
         finally:
             conn.close()
-            
+
     if df.empty:
         logger.warning("Tabela ml_features_pricing vazia. Abortando treinamento.")
         return
 
     logger.info(f"Dados carregados. Registros extraídos: {len(df)}")
-    
+
     # One-hot encode product names
     df_encoded = pd.get_dummies(df, columns=["product_name"], prefix="prod", dtype=int)
-    
+
     # Features and Target
     feature_cols = [c for c in df_encoded.columns if c.startswith("prod_") or c in ["price", "competitor_price", "day_of_week", "is_weekend"]]
     X = df_encoded[feature_cols]
     y = df_encoded["units_sold"]
-    
+
     # 2. Train/Test Split & Fit
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
+
     n_estimators = 100
     random_state = 42
-    
+
     # Start MLflow run
     if mlflow_enabled:
         try:
@@ -216,13 +217,13 @@ def train_model(sales_version: int = None, customers_version: int = None):
 
     model = RandomForestRegressor(n_estimators=n_estimators, random_state=random_state)
     model.fit(X_train, y_train)
-    
+
     # 3. Evaluate Model
     y_pred = model.predict(X_test)
     r2 = r2_score(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
     logger.info(f"Modelo treinado. Test R2: {r2:.4f}, Test MAE: {mae:.4f}")
-    
+
     if mlflow_enabled:
         try:
             mlflow.log_metric("r2_score", r2)
@@ -231,31 +232,31 @@ def train_model(sales_version: int = None, customers_version: int = None):
             logger.info("Métricas e modelo logados no MLflow.")
         except Exception as e:
             logger.warning(f"Erro ao logar métricas/modelo no MLflow: {e}")
-            
+
     # Save the model locally as a fallback
     model_path = os.path.join(model_dir, "pricing_model.joblib")
     joblib.dump(model, model_path)
     logger.info(f"Modelo persistido localmente em: {model_path}")
-    
+
     # 4. Optimization Loop (Revenue Maximization)
     optimal_pricing = {}
     product_cols = [c for c in feature_cols if c.startswith("prod_")]
     unique_products = df["product_name"].unique()
-    
+
     for prod_name in unique_products:
         prod_df = df[df["product_name"] == prod_name]
         avg_competitor = float(prod_df["competitor_price"].mean())
         base_price = float(prod_df["price"].median())
-        
+
         # Test a range of prices around the base price
         min_test_price = max(10.0, base_price * 0.5)
         max_test_price = base_price * 1.5
         candidate_prices = np.arange(min_test_price, max_test_price, 5.0)
-        
+
         best_price = base_price
         max_revenue = 0.0
         projected_demand_at_best = 0.0
-        
+
         # Create features for each candidate price
         opt_data = []
         for p in candidate_prices:
@@ -268,10 +269,10 @@ def train_model(sales_version: int = None, customers_version: int = None):
             for col in product_cols:
                 row[col] = 1 if col == f"prod_{prod_name}" else 0
             opt_data.append(row)
-            
+
         opt_df = pd.DataFrame(opt_data)[feature_cols]
         predicted_demands = model.predict(opt_df)
-        
+
         for i, p in enumerate(candidate_prices):
             q = predicted_demands[i]
             revenue = p * q
@@ -279,11 +280,11 @@ def train_model(sales_version: int = None, customers_version: int = None):
                 max_revenue = revenue
                 best_price = p
                 projected_demand_at_best = q
-                
+
         avg_daily_units = float(prod_df["units_sold"].mean())
         current_revenue = base_price * avg_daily_units
         revenue_lift_pct = ((max_revenue - current_revenue) / current_revenue) * 100 if current_revenue > 0 else 0.0
-        
+
         optimal_pricing[prod_name] = {
             "base_price": round(base_price, 2),
             "optimal_price": round(float(best_price), 2),
@@ -293,9 +294,9 @@ def train_model(sales_version: int = None, customers_version: int = None):
             "current_daily_revenue": round(float(current_revenue), 2),
             "revenue_lift_pct": round(float(revenue_lift_pct), 2)
         }
-        
+
         logger.info(f"Otimização {prod_name}: Base: R$ {base_price:.2f} -> Ótimo: R$ {best_price:.2f} | Lift: {revenue_lift_pct:.2f}%")
-        
+
     # 5. Save metadata and optimization results to JSON
     metadata = {
         "model_metrics": {
@@ -307,13 +308,13 @@ def train_model(sales_version: int = None, customers_version: int = None):
         "optimal_prices": optimal_pricing,
         "last_trained": datetime.now().isoformat()
     }
-    
+
     metadata_path = os.path.join(model_dir, "pricing_metadata.json")
     with open(metadata_path, "w", encoding="utf-8") as mf:
         json.dump(metadata, mf, indent=2)
-        
+
     logger.info(f"Metadados de precificação persistidos em: {metadata_path}")
-    
+
     if mlflow_enabled:
         try:
             # Log pricing metadata as artifact in MLflow
@@ -327,5 +328,5 @@ if __name__ == "__main__":
     parser.add_argument("--sales-version", type=int, default=None, help="Versão da tabela de vendas do Delta Lake")
     parser.add_argument("--customers-version", type=int, default=None, help="Versão da tabela de clientes do Delta Lake")
     args = parser.parse_args()
-    
+
     train_model(sales_version=args.sales_version, customers_version=args.customers_version)

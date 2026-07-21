@@ -7,9 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from domains.common.paths import get_model_dir
+
 from ..deps import cache
 from ..security import get_current_user
-from domains.common.paths import get_model_dir
 
 logger = logging.getLogger("API_ML")
 router = APIRouter(prefix="/api/v1", tags=["ml"])
@@ -38,7 +39,7 @@ def _load_model_and_metadata():
         import joblib
 
         _model_cache["model"] = joblib.load(model_path)
-        with open(metadata_path, "r", encoding="utf-8") as mf:
+        with open(metadata_path, encoding="utf-8") as mf:
             _model_cache["metadata"] = json.load(mf)
         _model_cache["mtime"] = mtime
 
@@ -58,7 +59,7 @@ def get_optimal_price(product_name: str = None, current_user: str = Depends(get_
         raise HTTPException(status_code=404, detail="Metadados de precificação não encontrados. O modelo de ML precisa ser treinado primeiro.")
 
     try:
-        with open(metadata_path, "r", encoding="utf-8") as f:
+        with open(metadata_path, encoding="utf-8") as f:
             metadata = json.load(f)
 
         optimal_prices = metadata.get("optimal_prices", {})
@@ -81,7 +82,7 @@ def get_optimal_price(product_name: str = None, current_user: str = Depends(get_
         raise
     except Exception as e:
         logger.error(f"Erro ao obter preço ótimo: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/ml/pricing-metadata")
@@ -95,7 +96,7 @@ def get_drift_status(current_user: str = Depends(get_current_user)):
     drift_path = os.path.join(get_model_dir(), "drift_status.json")
     if not os.path.exists(drift_path):
         raise HTTPException(status_code=404, detail="Nenhum dado de monitoramento de drift gerado ainda.")
-    with open(drift_path, "r", encoding="utf-8") as rf:
+    with open(drift_path, encoding="utf-8") as rf:
         return json.load(rf)
 
 
@@ -104,7 +105,7 @@ def get_drift_report_html(current_user: str = Depends(get_current_user)):
     report_path = os.path.join(get_model_dir(), "drift_report.html")
     if not os.path.exists(report_path):
         raise HTTPException(status_code=404, detail="Relatório detalhado do Evidently AI ainda não foi gerado.")
-    with open(report_path, "r", encoding="utf-8") as f:
+    with open(report_path, encoding="utf-8") as f:
         return f.read()
 
 

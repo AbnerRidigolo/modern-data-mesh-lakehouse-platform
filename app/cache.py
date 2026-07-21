@@ -1,7 +1,8 @@
-import logging
 import json
+import logging
+from typing import Any
+
 import redis
-from typing import Optional, Any
 
 logger = logging.getLogger("API_Cache")
 
@@ -22,7 +23,7 @@ class RedisCacheWrapper:
             logger.warning("Não foi possível conectar ao Redis. Caching em memória ativado como fallback.")
             self.enabled = False
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         if self.enabled:
             try:
                 val = self.r.get(key)
@@ -31,12 +32,12 @@ class RedisCacheWrapper:
                     return json.loads(val)
             except Exception as e:
                 logger.error(f"Erro ao ler do Redis: {e}")
-        
+
         # Fallback local cache
         if key in self.local_cache:
             logger.info(f"[CACHE HIT] Obtendo chave '{key}' do Cache em Memória local.")
             return self.local_cache[key]
-            
+
         logger.info(f"[CACHE MISS] Chave '{key}' não encontrada no cache.")
         return None
 
@@ -48,7 +49,7 @@ class RedisCacheWrapper:
                 return
             except Exception as e:
                 logger.error(f"Erro ao salvar no Redis: {e}")
-        
+
         # Fallback local cache
         self.local_cache[key] = value
         logger.info(f"[CACHE SET] Salva chave '{key}' no Cache em Memória local.")

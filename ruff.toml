@@ -1,0 +1,24 @@
+line-length = 120
+target-version = "py311"
+
+# Diretórios gerados/vendorizados
+extend-exclude = ["analytics_dw/dbt_packages", "analytics_dw/target", "storage", "frontend"]
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes (imports não usados, variáveis não definidas)
+    "I",   # isort (ordenação de imports)
+    "B",   # flake8-bugbear (bugs prováveis)
+    "UP",  # pyupgrade (sintaxe moderna)
+]
+ignore = [
+    "E501",  # linhas longas: limite tratado pelo formatador/leitura humana
+    "B008",  # Depends(...) em default de argumento é o idioma padrão do FastAPI
+]
+
+[lint.per-file-ignores]
+# DAGs usam o padrão de import dentro da task para isolar dependências no worker
+"dags/*" = ["E402"]
+"tests/*" = ["E402"]

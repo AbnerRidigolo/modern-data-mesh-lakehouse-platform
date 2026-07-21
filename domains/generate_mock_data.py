@@ -1,28 +1,29 @@
-import os
 import json
+import os
 import random
 from datetime import datetime, timedelta
+
 
 def generate_data():
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     cust_dir = os.path.join(base_dir, "storage", "raw", "customers_data")
     sales_dir = os.path.join(base_dir, "storage", "raw", "sales_data")
-    
+
     # Clean previous raw directories to generate fresh data
     for d in [cust_dir, sales_dir]:
         if os.path.exists(d):
             for f in os.listdir(d):
                 os.remove(os.path.join(d, f))
         os.makedirs(d, exist_ok=True)
-    
+
     # 1. Generate Customers (150 active/inactive customers)
     customers = []
     # Real-looking names
     first_names = ["Abner", "Maria", "Carlos", "Beatriz", "João", "Ana", "Lucas", "Julia", "Pedro", "Camila", "Bruno", "Amanda", "Gabriel", "Letícia"]
     last_names = ["Ridigolo", "Silva", "Souza", "Santos", "Oliveira", "Pereira", "Lima", "Ferreira", "Costa", "Rodrigues", "Almeida", "Nascimento"]
-    
+
     random.seed(42)  # For reproducibility
-    
+
     for c_id in range(1001, 1151):
         name = f"{random.choice(first_names)} {random.choice(last_names)}"
         email = f"{name.lower().replace(' ', '.')}@example.com"
@@ -31,7 +32,7 @@ def generate_data():
         created_at = datetime.now() - timedelta(days=signup_days_ago)
         # 15% are inactive
         status = "inactive" if random.random() < 0.15 else "active"
-        
+
         customers.append({
             "id": c_id,
             "name": name,
@@ -39,7 +40,7 @@ def generate_data():
             "created_at": created_at.isoformat(),
             "status": status
         })
-        
+
     # Add 2 invalid customers for quarantine tests
     customers.append({"id": 9991, "name": "Erro Email", "email": "email_invalido_sem_arroba", "created_at": datetime.now().isoformat(), "status": "active"})
     customers.append({"id": 9992, "name": "Erro Status", "email": "error@example.com", "created_at": datetime.now().isoformat(), "status": "suspended"})
@@ -58,30 +59,30 @@ def generate_data():
         "Fone Sony WH-1000XM4": {"base_price": 1700.00, "base_demand": 1.5, "elasticity": 4.0},
         "Curso de Analytics Engineering": {"base_price": 299.90, "base_demand": 3.0, "elasticity": 5.0}
     }
-    
+
     sale_id_counter = 5001
-    
+
     # Loop backwards through 180 days to create daily sales files
     for day_offset in range(180, -1, -1):
         target_date = datetime.now() - timedelta(days=day_offset)
         daily_sales = []
-        
+
         for prod_name, config in products.items():
             # Determine discount for today: 40% chance of a discount up to 30%
             discount = 0.0
             if random.random() < 0.40:
                 discount = round(random.uniform(0.05, 0.30), 2)
-                
+
             price = round(config["base_price"] * (1 - discount), 2)
-            
+
             # Competitor price fluctuates slightly around base price (no relation to our discount)
             competitor_price = round(config["base_price"] * random.uniform(0.92, 1.05), 2)
-            
+
             # Demand is higher when discount is higher
             # Q = base_demand * (1 + elasticity * discount) + random noise
             expected_demand = config["base_demand"] * (1.0 + config["elasticity"] * discount)
             actual_quantity = max(0, int(expected_demand + random.gauss(0, 1.0)))
-            
+
             # Generate sales records for this product today
             for _ in range(actual_quantity):
                 cust_id = random.randint(1001, 1150)
@@ -91,7 +92,7 @@ def generate_data():
                     minute=random.randint(0, 59),
                     second=random.randint(0, 59)
                 )
-                
+
                 # Status: 85% COMPLETED, 10% PENDING, 5% CANCELLED
                 status_roll = random.random()
                 if status_roll < 0.85:
@@ -100,7 +101,7 @@ def generate_data():
                     status = "PENDING"
                 else:
                     status = "CANCELLED"
-                    
+
                 daily_sales.append({
                     "sale_id": sale_id_counter,
                     "customer_id": cust_id,
@@ -112,7 +113,7 @@ def generate_data():
                     "sale_date": sale_time.isoformat()
                 })
                 sale_id_counter += 1
-                
+
         # Write daily file if there are sales
         if daily_sales:
             file_path = os.path.join(sales_dir, f"sales_{target_date.strftime('%Y-%m-%d')}.json")

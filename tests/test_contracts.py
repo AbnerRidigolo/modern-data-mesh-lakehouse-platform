@@ -1,14 +1,16 @@
-import pytest
-from pydantic import ValidationError
-from datetime import datetime
+import os
 
 # Setup PYTHONPATH imports
 import sys
-import os
+
+import pytest
+from pydantic import ValidationError
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from domains.crm.contract import CustomerContract
 from domains.ecommerce.contract import SaleContract
+
 
 def test_valid_customer_contract():
     valid_data = {

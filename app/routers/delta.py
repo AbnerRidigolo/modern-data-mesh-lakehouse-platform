@@ -6,8 +6,9 @@ from deltalake import DeltaTable
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..security import get_current_user
 from domains.common.paths import DELTA_TABLES, get_delta_read_options, get_delta_table_path, s3_enabled
+
+from ..security import get_current_user
 
 logger = logging.getLogger("API_Delta")
 router = APIRouter(prefix="/api/v1/delta", tags=["delta"])
@@ -31,7 +32,7 @@ def _resolve_table(table_key: str) -> DeltaTable:
     try:
         return DeltaTable(path, storage_options=options)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"A tabela Delta '{table_key}' ainda não foi criada. Execute a pipeline no Airflow.")
+        raise HTTPException(status_code=404, detail=f"A tabela Delta '{table_key}' ainda não foi criada. Execute a pipeline no Airflow.") from None
 
 
 def _jsonable_records(df: pd.DataFrame) -> list:
@@ -90,7 +91,7 @@ def get_table_data(table_key: str, version: int = None, limit: int = 200, curren
     try:
         dt = DeltaTable(path, version=version, storage_options=options) if version is not None else DeltaTable(path, storage_options=options)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Erro ao ler a versão solicitada: {e}")
+        raise HTTPException(status_code=404, detail=f"Erro ao ler a versão solicitada: {e}") from e
 
     df = dt.to_pandas()
     total_rows = len(df)
@@ -115,6 +116,6 @@ def restore_table(table_key: str, payload: RestoreRequest, current_user: str = D
         dt.restore(payload.version)
     except Exception as e:
         logger.error(f"Erro ao executar restore em '{table_key}': {e}")
-        raise HTTPException(status_code=500, detail=f"Erro ao executar restore: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao executar restore: {e}") from e
 
     return {"message": f"Tabela '{table_key}' restaurada com sucesso para a Versão {payload.version}!", "version": payload.version}

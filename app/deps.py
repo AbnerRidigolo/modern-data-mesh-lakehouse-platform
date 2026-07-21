@@ -7,9 +7,10 @@ import os
 import duckdb
 from qdrant_client import QdrantClient
 
+from domains.common.paths import get_db_path
+
 from . import config
 from .cache import RedisCacheWrapper
-from domains.common.paths import get_db_path
 
 logger = logging.getLogger("API_Deps")
 
@@ -41,6 +42,6 @@ def run_query(query: str) -> list:
         cursor.execute(query)
         columns = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
-        return [dict(zip(columns, row)) for row in rows]
+        return [dict(zip(columns, row, strict=False)) for row in rows]
     finally:
         conn.close()
