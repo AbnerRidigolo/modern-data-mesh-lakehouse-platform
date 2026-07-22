@@ -19,6 +19,7 @@ A plataforma foi desenhada seguindo o ciclo de vida clássico da engenharia de d
 | **Armazenamento** | Delta Lake (local ou S3/MinIO) com ACID, Time Travel e schema evolution; DuckDB como DW analítico |
 | **Análise** | Dashboard de KPIs, curvas de elasticidade de preço, search analytics |
 | **Machine Learning** | Pipeline de precificação com **validação temporal** (holdout + TimeSeriesSplit), **baseline obrigatório**, comparação de candidatos com **restrição de monotonicidade** preço→demanda, seleção com **gate de validade econômica**, WAPE/RMSE/MAE/R², tracking MLflow (nested runs) e monitoramento de drift (KS test + Evidently) |
+| **Feature Store** 🗄️ | Registry declarativo (YAML), **offline store** (feature views dbt/DuckDB) consumido via **point-in-time join (ASOF)** anti-leakage no treino, **online store** (Redis) materializado pelo Airflow para serving em baixa latência, monitoramento de frescor (TTL) e catálogo governado com owners |
 | **IA Generativa / LLM** 🤖 | **AI Copilot** com Claude (Anthropic SDK): loop agêntico com tool use, text-to-SQL com guardrails sobre o DuckDB, RAG via busca vetorial Qdrant, trace de ferramentas auditável, prompt caching e tratamento de refusals |
 | **Segurança** 🔐 | JWT com segredo via env var, senha admin com hash bcrypt, CORS restrito, rate limit no login — **zero segredos hardcoded** |
 | **Gerenciamento de dados** | Catálogo de domínios com contratos documentados, quarentena auditável, lineage dbt |
@@ -120,8 +121,9 @@ graph TD
 │   ├── common/paths.py       # Resolução centralizada de paths (local/container/S3)
 │   ├── crm/                  # Contrato Pydantic + ingestão Polars
 │   ├── ecommerce/            # Contrato Pydantic + ingestão PySpark
-│   └── ml_pricing/           # Treino, drift, indexação Qdrant, Data Quality
-├── analytics_dw/             # Projeto dbt (staging, marts, snapshots SCD2, seeds, testes)
+│   ├── ml_pricing/           # Treino, features compartilhadas, drift, Data Quality
+│   └── feature_store/        # Registry YAML + engine (point-in-time join + online store)
+├── analytics_dw/             # Projeto dbt (staging, marts, feature views, snapshots SCD2, testes)
 │   └── snapshots/            # customers_snapshot: historização SCD Type 2
 ├── dags/                     # DAGs do Apache Airflow
 ├── tests/                    # Testes pytest (contratos + API + endpoints + DQ engine)
@@ -178,6 +180,34 @@ Para ativar: `export ANTHROPIC_API_KEY=sk-ant-...` antes do `docker compose up` 
 
 ---
 
+## 🗄️ Feature Store
+
+Um feature store enxuto e completo construído sobre a stack existente (sem framework dedicado), demonstrando os quatro pilares de uma plataforma de features de produção:
+
+```
+                     registry.yml  (governança declarativa: entidades, views, TTL, owners)
+                            │
+   ┌────────────── OFFLINE STORE ──────────────┐      ┌───── ONLINE STORE ─────┐
+   │  feature views dbt/DuckDB                  │      │  Redis (fallback memória) │
+   │  ft_product_features (produto-dia, 7d/30d) │      │  snapshot + TTL por chave │
+   │  ft_customer_features (cliente, 90d, RFM)  │      └───────────▲────────────┘
+   └───────────────────┬────────────────────────┘                 │ materialize (Airflow)
+                       │ point-in-time join (ASOF)                 │
+             ┌─────────▼─────────┐                        ┌────────┴─────────┐
+             │  TREINO (offline) │                        │ SERVING (online) │
+             │  entity_df + ts →  │                        │ GET features/online │
+             │  features de t-1   │                        │  latência baixa   │
+             └────────────────────┘                        └───────────────────┘
+```
+
+**Point-in-time correctness (anti-leakage)** — o coração do feature store. Para montar o dataset de treino, cada evento (produto/cliente + timestamp) recebe **as features vigentes naquele instante**, via `ASOF LEFT JOIN` nativo do DuckDB (`event_ts >= feature_ts`). Um evento em 15/02 recebe a janela de demanda de 15/02, **nunca** a de 15/07 — o vazamento temporal mais comum em pipelines de ML fica impossível por construção. Coberto por testes que provam o comportamento (`tests/test_feature_store.py`).
+
+**Online store & materialização** — a task `feature_store_materialization` (Airflow, após o `dbt build`) escreve o snapshot mais recente por entidade no Redis com TTL. O serving (`GET /api/v1/features/online/{view}/{id}`) lê em baixa latência, com **fallback automático para o offline store** em cache miss — o serving nunca fica sem resposta.
+
+**Governança & frescor** — o registry YAML (entidades, views, features tipadas, owners, TTL) é exposto em `GET /api/v1/features/registry`, e `GET /api/v1/features/freshness` reporta a idade do dado vs TTL por view (sinal de monitoramento). Tudo navegável na página **Feature Store** do portal.
+
+---
+
 ## 🔌 Endpoints da API (DaaS)
 
 Todos os endpoints (exceto `/` e o login) exigem `Authorization: Bearer <token>`.
@@ -207,6 +237,10 @@ Todos os endpoints (exceto `/` e o login) exigem `Authorization: Bearer <token>`
 | `GET` | `/api/v1/quarantine/{domain}` | Violações de contrato em quarentena |
 | `GET` | `/api/v1/copilot/status` | Status do AI Copilot (habilitado + modelo) |
 | `POST` | `/api/v1/copilot/chat` | Chat com o AI Copilot (LLM + tool use + trace auditável) |
+| `GET` | `/api/v1/features/registry` | Catálogo governado do feature store (entidades, views, owners, TTL) |
+| `GET` | `/api/v1/features/freshness` | Frescor por feature view (idade do dado vs TTL) |
+| `GET` | `/api/v1/features/online/{view}/{id}` | Serving online de features de uma entidade |
+| `POST` | `/api/v1/features/materialize` | Materializa o snapshot mais recente no online store |
 | `GET` | `/metrics` | Métricas Prometheus (contadores e histogramas de latência por rota) |
 
 Documentação Swagger interativa: **[http://localhost:8000/docs](http://localhost:8000/docs)**

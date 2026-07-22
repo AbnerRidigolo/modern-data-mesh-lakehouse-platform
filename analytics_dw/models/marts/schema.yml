@@ -75,7 +75,7 @@ models:
           - not_null
 
   - name: ml_features_pricing
-    description: "Feature store diária de preço/demanda por produto, usada pelo treino do modelo de precificação dinâmica"
+    description: "Base diária de preço/demanda por produto, usada pelo treino do modelo de precificação dinâmica"
     columns:
       - name: product_name
         description: "Nome do produto"
@@ -89,6 +89,43 @@ models:
               min_value: 0
       - name: units_sold
         description: "Unidades vendidas no dia"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+  - name: ft_product_features
+    description: "Feature view (offline store) no grão produto-dia: janelas móveis 7d/30d de demanda, receita e posicionamento de preço. Consumida via point-in-time join no treino e materializada no online store (Redis)"
+    columns:
+      - name: product_name
+        description: "Chave de entidade (product)"
+        tests:
+          - not_null
+      - name: feature_date
+        description: "Data de referência: valores refletem o conhecimento ao fim deste dia"
+        tests:
+          - not_null
+      - name: units_30d
+        description: "Unidades vendidas na janela de 30 dias"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+  - name: ft_customer_features
+    description: "Feature view (offline store) no grão cliente: snapshot de atividade (90d), LTV, recência e segmento RFM. Materializada no online store (Redis) para servir em baixa latência"
+    columns:
+      - name: customer_id
+        description: "Chave de entidade (customer)"
+        tests:
+          - unique
+          - not_null
+      - name: feature_timestamp
+        description: "Timestamp da última atividade que alimentou o snapshot"
+        tests:
+          - not_null
+      - name: lifetime_value
+        description: "Receita acumulada do cliente"
         tests:
           - not_null
           - dbt_expectations.expect_column_values_to_be_between:

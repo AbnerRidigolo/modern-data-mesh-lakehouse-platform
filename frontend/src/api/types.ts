@@ -213,3 +213,40 @@ export interface CopilotTurn {
   role: "user" | "assistant";
   content: string;
 }
+
+export interface FeatureDef {
+  name: string;
+  dtype: string;
+  description: string;
+}
+
+export interface FeatureViewDef {
+  entity: string;
+  source_table: string;
+  timestamp_field: string;
+  online_ttl_seconds: number;
+  owner: string;
+  description: string;
+  features: FeatureDef[];
+}
+
+export interface FeatureRegistry {
+  entities: Record<string, { join_key: string; description: string }>;
+  feature_views: Record<string, FeatureViewDef>;
+}
+
+export interface FeatureFreshness {
+  feature_view: string;
+  rows: number;
+  latest_timestamp: string | null;
+  age_hours: number | null;
+  ttl_hours: number;
+  is_stale: boolean | null;
+}
+
+export interface OnlineFeatures {
+  entity_id: string | number;
+  features: Record<string, unknown> | null;
+  event_timestamp?: string;
+  source: string;
+}

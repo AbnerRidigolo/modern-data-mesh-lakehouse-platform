@@ -99,5 +99,34 @@ dq_task = PythonOperator(
     dag=dag,
 )
 
+# 8. Feature Store Materialization Task
+def trigger_feature_materialization():
+    import os
+
+    import redis
+
+    from domains.feature_store.store import FeatureStore
+
+    redis_client = None
+    try:
+        redis_client = redis.Redis(
+            host=os.environ.get("REDIS_HOST", "redis"),
+            port=int(os.environ.get("REDIS_PORT", 6379)),
+            socket_timeout=2.0,
+        )
+        redis_client.ping()
+    except Exception:
+        redis_client = None  # fallback tratado dentro da engine
+
+    store = FeatureStore(redis_client=redis_client)
+    report = store.materialize()
+    print(f"Feature Store materializado: {report}")
+
+feature_store_task = PythonOperator(
+    task_id='feature_store_materialization',
+    python_callable=trigger_feature_materialization,
+    dag=dag,
+)
+
 # Lineage & Dependency Flow
-[crm_task, ecommerce_task] >> dbt_task >> [ml_task, drift_task, qdrant_task, dq_task]
+[crm_task, ecommerce_task] >> dbt_task >> [ml_task, drift_task, qdrant_task, dq_task, feature_store_task]

@@ -18,6 +18,18 @@ cache = RedisCacheWrapper(host=config.REDIS_HOST, port=config.REDIS_PORT)
 qdrant_client = QdrantClient(host=config.QDRANT_HOST, port=config.QDRANT_PORT)
 
 _embedding_model = None
+_feature_store = None
+
+
+def get_feature_store():
+    """Singleton do Feature Store, reaproveitando o cliente Redis do cache como online store."""
+    global _feature_store
+    if _feature_store is None:
+        from domains.feature_store.store import FeatureStore
+
+        redis_client = cache.r if cache.enabled else None
+        _feature_store = FeatureStore(redis_client=redis_client)
+    return _feature_store
 
 
 def get_embedding_model():

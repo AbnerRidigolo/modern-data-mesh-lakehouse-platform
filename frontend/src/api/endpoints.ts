@@ -5,6 +5,9 @@ import type {
   CopilotChatResponse,
   CopilotStatus,
   CopilotTurn,
+  FeatureFreshness,
+  FeatureRegistry,
+  OnlineFeatures,
   DataQualityHistoryEntry,
   DataQualityReport,
   DeltaHistoryEntry,
@@ -138,5 +141,25 @@ export async function getCopilotStatus(): Promise<CopilotStatus> {
 
 export async function copilotChat(message: string, history: CopilotTurn[]): Promise<CopilotChatResponse> {
   const resp = await apiClient.post("/api/v1/copilot/chat", { message, history });
+  return resp.data;
+}
+
+export async function getFeatureRegistry(): Promise<FeatureRegistry> {
+  const resp = await apiClient.get("/api/v1/features/registry");
+  return resp.data;
+}
+
+export async function getFeatureFreshness(): Promise<FeatureFreshness[]> {
+  const resp = await apiClient.get("/api/v1/features/freshness");
+  return resp.data;
+}
+
+export async function getOnlineFeatures(viewName: string, entityId: string): Promise<OnlineFeatures> {
+  const resp = await apiClient.get(`/api/v1/features/online/${viewName}/${encodeURIComponent(entityId)}`);
+  return resp.data;
+}
+
+export async function materializeFeatures(): Promise<{ status: string; views: Record<string, { entities_written: number; backend: string }> }> {
+  const resp = await apiClient.post("/api/v1/features/materialize");
   return resp.data;
 }

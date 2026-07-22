@@ -10,7 +10,7 @@ from domains.common.paths import get_db_path
 
 from . import config
 from .deps import cache
-from .routers import auth, catalog, copilot, delta, kpis, lineage, ml, quality, search
+from .routers import auth, catalog, copilot, delta, features, kpis, lineage, ml, quality, search
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("API_Gateway")
@@ -61,6 +61,7 @@ app.include_router(quality.router)
 app.include_router(delta.router)
 app.include_router(lineage.router)
 app.include_router(catalog.router)
+app.include_router(features.router)
 
 
 @app.get("/")

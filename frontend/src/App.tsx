@@ -5,6 +5,7 @@ import CatalogPage from "./pages/CatalogPage";
 import CopilotPage from "./pages/CopilotPage";
 import DashboardPage from "./pages/DashboardPage";
 import DataQualityPage from "./pages/DataQualityPage";
+import FeatureStorePage from "./pages/FeatureStorePage";
 import LoginPage from "./pages/LoginPage";
 import MLOpsPage from "./pages/MLOpsPage";
 import SearchPage from "./pages/SearchPage";
@@ -27,6 +28,7 @@ function AppRoutes() {
         <Route path="/time-travel" element={<TimeTravelPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/mlops" element={<MLOpsPage />} />
+        <Route path="/feature-store" element={<FeatureStorePage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/copilot" element={<CopilotPage />} />
         <Route path="/data-quality" element={<DataQualityPage />} />

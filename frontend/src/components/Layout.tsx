@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { to: "/time-travel", label: "🕰️ Delta Lake Time Travel" },
   { to: "/catalog", label: "🕸️ Catálogo Data Mesh" },
   { to: "/mlops", label: "📈 MLOps: Precificação" },
+  { to: "/feature-store", label: "🗄️ Feature Store" },
   { to: "/search", label: "🔍 Busca Semântica" },
   { to: "/copilot", label: "🤖 AI Copilot" },
   { to: "/data-quality", label: "✅ Data Quality" },
