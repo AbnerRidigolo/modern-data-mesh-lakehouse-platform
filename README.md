@@ -1,8 +1,8 @@
 # Enterprise Data Mesh & Lakehouse Platform
 
-**Delta Lake · Airflow · dbt · DuckDB · FastAPI · Redis · MLflow · Qdrant · Claude (LLM) · React + TypeScript**
+**Delta Lake · Airflow · dbt · DuckDB · FastAPI · Redis · MLflow · Qdrant · Redpanda · Prometheus/Grafana · Claude (LLM) · React + TypeScript**
 
-Este projeto implementa uma **Plataforma de Dados e IA de Nível de Produtividade Industrial (Data Engineering + AI Engineering)**. Ela utiliza o paradigma de **Data Mesh** (domínios descentralizados expostos como produtos de dados), armazenamento colunar transacional (**Lakehouse com Delta Lake**), engenharia de analytics (**dbt Core + DuckDB**), servimento performático (**FastAPI + cache Redis**), modelagem e ciclo de vida de ML (**MLflow + Random Forest + Drift Monitor**), busca semântica vetorial (**Qdrant + FastEmbed**), um **AI Copilot com LLM (Claude) orquestrado via tool use** — text-to-SQL com guardrails e RAG sobre o catálogo —, observabilidade de qualidade de dados (**Data Quality Engine**), orquestração automatizada (**Apache Airflow**) e um **Portal de Governança em React + TypeScript** consumindo tudo via API autenticada com JWT.
+Este projeto implementa uma **Plataforma de Dados e IA de Nível de Produtividade Industrial (Data Engineering + AI Engineering)**. Ela utiliza o paradigma de **Data Mesh** (domínios descentralizados — CRM, E-Commerce e Marketing — expostos como produtos de dados), armazenamento colunar transacional (**Lakehouse com Delta Lake**), **ingestão batch e em tempo real** (Polars/PySpark + streaming Redpanda/Kafka com dead-letter queue), engenharia de analytics e **camada semântica** (**dbt Core + DuckDB** com marts de receita, coortes e marketing), servimento performático (**FastAPI + cache Redis**), modelagem e ciclo de vida de ML (**MLflow + HistGradientBoosting + Drift Monitor**), busca semântica vetorial (**Qdrant + FastEmbed**), um **AI Copilot com LLM (Claude) orquestrado via tool use** — text-to-SQL com guardrails e RAG sobre o catálogo —, observabilidade de qualidade de dados (**Data Quality Engine**) e de **golden signals** (**Prometheus + Grafana**), orquestração automatizada (**Apache Airflow**) e um **Portal Executivo em React + TypeScript** (dashboard com drill-down + página de Marketing) consumindo tudo via API autenticada com JWT.
 
 ---
 
@@ -12,20 +12,20 @@ A plataforma foi desenhada seguindo o ciclo de vida clássico da engenharia de d
 
 | Estágio / Elemento | Implementação na Plataforma |
 |---|---|
-| **Geração** | Fontes simuladas de CRM e E-Commerce (`domains/generate_mock_data.py`) produzindo JSONs brutos |
-| **Ingestão** | Polars (CRM) e PySpark (E-Commerce) com **Data Contracts Pydantic** e quarentena de violações |
-| **Transformação** | dbt Core sobre DuckDB — staging → dimensões/fatos (Kimball) → marts de KPI, LTV/RFM e features de ML, com **modelo incremental** (`fct_sales`) e **snapshot SCD Type 2** de clientes |
-| **Disponibilização** | FastAPI (DaaS) com cache Redis, busca vetorial Qdrant e portal React |
+| **Geração** | Fontes simuladas de CRM, E-Commerce e Marketing (`domains/generate_mock_data.py`) produzindo JSONs brutos |
+| **Ingestão** | **Batch**: Polars (CRM/Marketing) e PySpark (E-Commerce) com **Data Contracts Pydantic** e quarentena. **Streaming**: producer/consumer Redpanda (Kafka) com validação de contrato e **dead-letter queue** |
+| **Transformação** | dbt Core sobre DuckDB — staging → dimensões/fatos (Kimball) → **camada semântica** com marts de KPI, LTV/RFM, receita diária, performance por categoria, coortes de retenção e marketing (ROAS/CAC), com **modelo incremental** (`fct_sales`) e **snapshot SCD Type 2** |
+| **Disponibilização** | FastAPI (DaaS) com cache Redis, endpoints de analytics, busca vetorial Qdrant e portal React |
 | **Armazenamento** | Delta Lake (local ou S3/MinIO) com ACID, Time Travel e schema evolution; DuckDB como DW analítico |
-| **Análise** | Dashboard de KPIs, curvas de elasticidade de preço, search analytics |
+| **Análise** | **Dashboard executivo** (KPIs MoM, sparklines, tendência diária, drill-down por categoria), página de **Marketing** (funil, ROAS/CAC), curvas de elasticidade de preço, search analytics |
 | **Machine Learning** | Pipeline de precificação com **validação temporal** (holdout + TimeSeriesSplit), **baseline obrigatório**, comparação de candidatos com **restrição de monotonicidade** preço→demanda, seleção com **gate de validade econômica**, WAPE/RMSE/MAE/R², tracking MLflow (nested runs) e monitoramento de drift (KS test + Evidently) |
 | **Feature Store** 🗄️ | Registry declarativo (YAML), **offline store** (feature views dbt/DuckDB) consumido via **point-in-time join (ASOF)** anti-leakage no treino, **online store** (Redis) materializado pelo Airflow para serving em baixa latência, monitoramento de frescor (TTL) e catálogo governado com owners |
 | **IA Generativa / LLM** 🤖 | **AI Copilot** com Claude (Anthropic SDK): loop agêntico com tool use, text-to-SQL com guardrails sobre o DuckDB, RAG via busca vetorial Qdrant, trace de ferramentas auditável, prompt caching e tratamento de refusals |
 | **Segurança** 🔐 | JWT com segredo via env var, senha admin com hash bcrypt, CORS restrito, rate limit no login — **zero segredos hardcoded** |
 | **Gerenciamento de dados** | Catálogo de domínios com contratos documentados, quarentena auditável, lineage dbt |
-| **DataOps** | CI GitHub Actions (lint ruff + pytest backend + typecheck/build frontend), testes dbt + dbt-expectations, testes unitários do DQ Engine, métricas Prometheus em `/metrics` |
-| **Arquitetura de dados** | Data Mesh (domínios donos dos seus produtos), Lakehouse em camadas, Star Schema |
-| **Orquestração** | Apache Airflow com DAG unificada e dependências explícitas entre ingestão, DW, ML, vetores, DQ e feature store |
+| **DataOps** | CI GitHub Actions (lint ruff + pytest backend + typecheck/build frontend), testes dbt + dbt-expectations, testes unitários do DQ Engine, **observabilidade de golden signals** (Prometheus + Grafana provisionado) sobre `/metrics` |
+| **Arquitetura de dados** | Data Mesh (domínios donos dos seus produtos), Lakehouse em camadas, Star Schema, **arquitetura unificada batch + streaming** sobre o mesmo Delta Lake |
+| **Orquestração** | Apache Airflow com DAG unificada e dependências explícitas entre ingestão (CRM/E-Commerce/Marketing), DW, ML, vetores, DQ e feature store |
 | **Infraestrutura / DevOps** ☸️ | Deploy em **Kubernetes** via Kustomize (base + overlays dev/prod): StatefulSets + PVC para os stores, volume RWX compartilhado, probes, resource limits, **HPA** na API, Ingress e segregação ConfigMap/Secret — além do docker-compose para uso local |
 | **Engenharia de software** | Backend modular (routers FastAPI + módulos compartilhados), frontend tipado (TypeScript), paths centralizados, linting ruff, testes automatizados |
 
@@ -35,56 +35,57 @@ A plataforma foi desenhada seguindo o ciclo de vida clássico da engenharia de d
 
 ```mermaid
 graph TD
-    subgraph Ingestion ["1. Ingestão & Contratos (Paralelo)"]
-        RAW_C["Raw Customers JSON"] -->|Pydantic Contract| INGEST_C["CRM Polars Ingest"]
-        RAW_E["Raw Sales JSON"] -->|Pydantic Contract| INGEST_E["E-Commerce Spark Ingest"]
-        INGEST_C -->|Violations| Q_C["Quarantine CRM"]
-        INGEST_E -->|Violations| Q_E["Quarantine E-Commerce"]
-        INGEST_C -->|Valid Append| DELTA_C[("Delta Lake: Customers")]
-        INGEST_E -->|Valid Append| DELTA_S[("Delta Lake: Sales")]
+    subgraph Streaming ["0. Ingestão em Tempo Real (Redpanda / Kafka)"]
+        PROD["Marketing Stream Producer<br/>(clickstream de mídia)"] -->|marketing.events.raw| RP[("Redpanda Broker")]
+        RP -->|consume| CONS["Stream Consumer<br/>(valida contrato + micro-batch)"]
+        CONS -->|Violations| DLQ["marketing.events.dlq"]
+        CONS -->|Valid Append| DELTA_M[("Delta Lake: Campaigns")]
     end
 
-    subgraph DW_Layer ["2. Data Warehousing (dbt + DuckDB)"]
-        DELTA_C -->|Deduplicado por natural key| DIM_C[("dim_customers")]
-        DELTA_S -->|Deduplicado por sale_id| FCT_S[("fct_sales")]
-        DIM_C --> DBT_B["dbt build & docs generate"]
-        FCT_S --> DBT_B
-        DBT_B -->|Materializa Marts| DDB[("DuckDB Analytics DW")]
+    subgraph Ingestion ["1. Ingestão Batch & Contratos (Paralelo)"]
+        RAW_C["Raw Customers JSON"] -->|Pydantic Contract| INGEST_C["CRM Polars Ingest"]
+        RAW_E["Raw Sales JSON"] -->|Pydantic Contract| INGEST_E["E-Commerce Spark Ingest"]
+        RAW_M["Raw Marketing JSON"] -->|Pydantic Contract| INGEST_M["Marketing Polars Ingest"]
+        INGEST_C -->|Valid Append| DELTA_C[("Delta Lake: Customers")]
+        INGEST_E -->|Valid Append| DELTA_S[("Delta Lake: Sales")]
+        INGEST_M -->|Valid Append| DELTA_M
+    end
+
+    subgraph DW_Layer ["2. Data Warehousing & Camada Semântica (dbt + DuckDB)"]
+        DELTA_C -->|natural key dedup| DIM_C[("dim_customers")]
+        DELTA_S -->|sale_id dedup| FCT_S[("fct_sales")]
+        DELTA_M -->|event_id dedup| STG_M[("stg_marketing")]
+        DIM_C & FCT_S & STG_M --> DBT_B["dbt build & docs generate"]
+        DBT_B -->|Marts ricos: daily_revenue, category_performance,<br/>customer_cohorts, marketing_performance| DDB[("DuckDB Analytics DW")]
     end
 
     subgraph MLOps_Lifecycle ["3. Ciclo de Vida de ML, Vetores & DQ (Paralelo)"]
         DDB -->|ml_features_pricing| ML_T["ML pricing_model Training"]
-        ML_T -->|Calcula P* Otimizado| REG[(Model Registry: Local & MLflow)]
-        ML_T -->|Logs de Runs & Métricas| MLF[("MLflow Server")]
-        
-        DDB -->|Preço Semanal vs Treino| DRIFT_T["ML pricing_drift Check"]
-        DRIFT_T -->|Kolmogorov-Smirnov| DRIFT_J["drift_status.json"]
-        
-        DDB -->|dim_products| Q_VEC["Qdrant Vector Indexing"]
-        Q_VEC -->|Embeddings| QD[("Qdrant Vector DB")]
-        
+        ML_T -->|P* Otimizado| REG[(Model Registry: Local & MLflow)]
+        ML_T -->|Runs & Métricas| MLF[("MLflow Server")]
+        DDB -->|Preço vs Treino| DRIFT_T["Drift Check (KS)"]
+        DDB -->|dim_products| Q_VEC["Qdrant Vector Indexing"] --> QD[("Qdrant Vector DB")]
         DDB -->|Validations| DQ_C["Data Quality Check"]
-        DQ_C -->|Metrics Report| DQ_R["dq_report.json / dq_history.jsonl"]
     end
 
     subgraph Servimento ["4. Camada de Servimento (DaaS)"]
         DDB -->|Query SQL| API["FastAPI Gateway (JWT)"]
-        REG -->|Load pricing_metadata.json| API
-        QD -->|Semantic Similarity Search| API
-        DQ_R -->|Quality Reports API| API
-        API -->|Cache Lookup <1ms| REDIS[("Redis Cache")]
+        REG --> API
+        QD --> API
+        API -->|Cache <1ms| REDIS[("Redis Cache")]
+        API -->|/metrics| PROM[("Prometheus")]
+        PROM --> GRAF["Grafana Dashboards"]
+        RP -.->|/public_metrics| PROM
     end
 
-    subgraph Portal ["5. Portal de Governança & BI"]
-        API --> PORTAL["React Portal (Vite + TypeScript)"]
-        DELTA_C -->|Time Travel versioning| PORTAL
-        DELTA_S -->|Time Travel versioning| PORTAL
-        DBT_B -->|manifest.json Lineage| PORTAL
-        DRIFT_J -->|Status Alert| PORTAL
+    subgraph Portal ["5. Portal Executivo & BI"]
+        API --> PORTAL["React Portal (Vite + TS)<br/>Executive Dashboard + Marketing"]
+        DELTA_C & DELTA_S & DELTA_M -->|Time Travel| PORTAL
+        DBT_B -->|manifest Lineage| PORTAL
     end
 
     subgraph Orquestracao ["Orquestração (Apache Airflow)"]
-        INGEST_C & INGEST_E -->|>>| DBT_B -->|>>| ML_T & DRIFT_T & Q_VEC & DQ_C
+        INGEST_C & INGEST_E & INGEST_M -->|>>| DBT_B -->|>>| ML_T & DRIFT_T & Q_VEC & DQ_C
     end
 ```
 
@@ -103,6 +104,7 @@ graph TD
 │   └── routers/              # Endpoints por domínio funcional
 │       ├── auth.py           #   POST /api/v1/auth/token
 │       ├── kpis.py           #   KPIs, clientes e cache
+│       ├── analytics.py      #   Marts ricos: daily-revenue, category, cohorts, marketing
 │       ├── ml.py             #   Preço ótimo, metadata, drift, simulação
 │       ├── search.py         #   Busca vetorial + search logs
 │       ├── quality.py        #   Relatórios de Data Quality
@@ -113,21 +115,24 @@ graph TD
 │   └── src/
 │       ├── api/              # Cliente HTTP tipado + endpoints + types
 │       ├── auth/             # Contexto de autenticação JWT
-│       ├── components/       # Layout, MetricCard, LineageGraph, Alert
-│       └── pages/            # Dashboard, TimeTravel, Catalog, MLOps, Search, DataQuality
+│       ├── components/       # Layout, MetricCard, Sparkline, LineageGraph, Alert
+│       └── pages/            # Executive Dashboard, Marketing, TimeTravel, Catalog, MLOps...
 ├── domains/                  # Domínios do Data Mesh (produtores)
 │   ├── common/paths.py       # Resolução centralizada de paths (local/container/S3)
 │   ├── crm/                  # Contrato Pydantic + ingestão Polars
 │   ├── ecommerce/            # Contrato Pydantic + ingestão PySpark
+│   ├── marketing/            # Contrato Pydantic + ingestão Polars (campanhas/mídia)
+│   ├── streaming/            # Producer + consumer de clickstream (Redpanda/Kafka)
 │   ├── ml_pricing/           # Treino, features compartilhadas, drift, Data Quality
 │   └── feature_store/        # Registry YAML + engine (point-in-time join + online store)
 ├── analytics_dw/             # Projeto dbt (staging, marts, feature views, snapshots SCD2, testes)
 │   └── snapshots/            # customers_snapshot: historização SCD Type 2
+├── observability/            # Prometheus (scrape) + Grafana (datasource + dashboard JSON)
 ├── dags/                     # DAGs do Apache Airflow
-├── tests/                    # Testes pytest (contratos + API + endpoints + DQ + ML + feature store)
+├── tests/                    # Testes pytest (contratos + API + analytics + streaming + DQ + ML...)
 ├── k8s/                      # Deploy Kubernetes (Kustomize base + overlays dev/prod) + Makefile
 ├── ruff.toml                 # Configuração de linting Python
-├── docker-compose.yml        # Infraestrutura completa (10 serviços) para uso local
+├── docker-compose.yml        # Infraestrutura completa (~16 serviços) para uso local
 └── .github/workflows/ci.yml  # CI: lint (ruff) + backend-test (pytest) + frontend-build (tsc/vite)
 ```
 
@@ -149,6 +154,9 @@ graph TD
 12. **Qdrant & FastEmbed**: Banco de dados vetorial corporativo (Qdrant) integrado com pipeline leve de embeddings em ONNX (FastEmbed) para buscas semânticas em linguagem natural no catálogo de produtos.
 13. **Data Quality Observability**: Motor customizado de qualidade de dados integrado no Airflow e DuckDB para monitorar anomalias de faturamento, integridade referencial, volume diário e quedas bruscas de vendas.
 14. **AI Copilot (Claude / Anthropic SDK)**: Assistente analítico com **LLM orquestrado via tool use** — o modelo decide entre executar **text-to-SQL com guardrails** (apenas `SELECT`/`WITH` em conexão DuckDB read-only, statement único, LIMIT imposto, blocklist de DDL/DML) ou fazer **RAG com a busca vetorial Qdrant** do catálogo. Loop agêntico manual com trace auditável de cada ferramenta (a UI mostra o SQL executado), prompt caching do system prompt, tratamento de `refusal` e degradação graciosa sem credencial.
+15. **Redpanda (Streaming Kafka-compatible)**: Ingestão de **clickstream de mídia em tempo real** no 4º domínio (Marketing). Um producer simula o fluxo contínuo de eventos de campanha particionados por canal; um consumer valida cada evento contra o contrato de dados, micro-batcha os válidos no Delta Lake (mesma tabela do batch) e roteia violações para uma **dead-letter queue**. Arquitetura em duas camadas (funções puras testáveis + laço de consumo), unificando batch e streaming sobre o mesmo lakehouse.
+16. **Prometheus + Grafana (Observabilidade)**: Coleta das **golden signals** da API (throughput, latência p50/p95/p99, taxa de erro 5xx, requisições em andamento) via `prometheus-fastapi-instrumentator` em `/metrics`, além das métricas públicas do broker Redpanda. Grafana sobe já provisionado (datasource + dashboard) — zero clique para observar SLI/SLO.
+17. **Camada Semântica & Marts Analíticos Ricos (dbt)**: Marts de negócio no grão certo para BI executivo — `dm_daily_revenue` (série diária + média móvel 7d + delta), `dm_category_performance` (share/ticket por categoria), `dm_customer_cohorts` (matriz de retenção por coorte de aquisição) e `dm_marketing_performance` (CTR/CPC/CPM/ROAS/CAC por mês × categoria com receita atribuída). Servidos por endpoints `/api/v1/analytics` com filtros parametrizados (prepared statements, anti SQL-injection) e cache Redis.
 
 ---
 
@@ -217,6 +225,10 @@ Todos os endpoints (exceto `/` e o login) exigem `Authorization: Bearer <token>`
 | `GET` | `/api/v1/kpis` | KPIs mensais consolidados (cacheado) |
 | `GET` | `/api/v1/customers` | Dimensão de clientes com paginação (`page`, `page_size`) |
 | `GET` | `/api/v1/customers/ltv` | Mart de LTV + segmentação RFM (filtro por `segment`) |
+| `GET` | `/api/v1/analytics/daily-revenue` | Série diária de receita + média móvel 7d (`days`) |
+| `GET` | `/api/v1/analytics/category-performance` | Receita/ticket/share por categoria |
+| `GET` | `/api/v1/analytics/cohorts` | Matriz de retenção por coorte de aquisição |
+| `GET` | `/api/v1/analytics/marketing` | ROAS/CAC/CTR por mês × categoria (filtro `category`) |
 | `POST` | `/api/v1/cache/clear` | Limpa o cache Redis/memória |
 | `GET` | `/api/v1/predict/optimal-price` | Preço ótimo P* por produto |
 | `GET` | `/api/v1/ml/pricing-metadata` | Métricas do modelo + otimizações |
@@ -267,10 +279,15 @@ Isso iniciará:
 * `mlflow`: Servidor de rastreamento de modelos e experimentos de ML (porta `5001`).
 * `airflow-webserver` e `airflow-scheduler`: Orquestrador Airflow (porta `8085`, usuário `airflow` / senha `airflow`).
 * `qdrant`: Banco de dados vetorial (porta `6335`).
+* `redpanda` + `redpanda-console`: Broker de streaming compatível com Kafka (bootstrap em `localhost:19092`, console em `8087`).
+* `stream-producer` / `stream-consumer`: Producer do clickstream de marketing e consumer que valida + micro-batcha no Delta Lake.
 * `api`: API Gateway FastAPI (DaaS), servindo em `8000`.
 * `frontend`: Portal de Governança em React, servido via Nginx em `8090`.
+* `prometheus`: Coleta das golden signals da API (porta `9090`).
+* `grafana`: Dashboards provisionados de observabilidade (porta `3001`, `admin`/`admin`).
 
 Acesse o portal completo em 👉 **[http://localhost:8090](http://localhost:8090)** (usuário `admin` / senha `adminpassword`).
+Observabilidade em 👉 **[http://localhost:3001](http://localhost:3001)** (dashboard *DaaS API — Golden Signals*).
 
 ---
 
@@ -418,3 +435,21 @@ Na página **Data Quality** do portal React:
    * **Anomalia de Queda de Vendas**: Detecção imediata se algum produto teve vendas zeradas nos últimos 3 dias.
    * **Registros Órfãos (Completeness)**: Proporção de vendas sem clientes associados (órfãos).
    * **Anomalia de Volume Diário**: Alerta se o volume do último dia desviar em mais de 2 desvios padrões da média histórica.
+
+### 7. BI Executivo & Drill-down de Marketing
+Nas páginas **Executive Dashboard** e **Marketing & Growth** do portal React:
+1. KPI hero cards com **variação MoM** e **sparklines** inline; seletor de período (30/90/180/365 dias) que refiltra a série temporal.
+2. Gráfico composto de **receita diária + média móvel 7d**, e receita por categoria com **drill-down interativo** (clique na barra → painel de faturamento, pedidos, ticket e share).
+3. Página de Marketing com **funil de conversão** (impressões → cliques → pedidos → compradores), **ROAS por mês** e tabela mês × categoria com CTR/CPC/ROAS/CAC — tudo servido pelos marts `/api/v1/analytics`.
+
+### 8. Ingestão em Tempo Real (Streaming)
+O par `stream-producer`/`stream-consumer` roda continuamente no Compose:
+1. O producer publica eventos de campanha no tópico `marketing.events.raw` (Redpanda), particionados por canal (~2% inválidos propositalmente).
+2. O consumer valida cada evento contra o `MarketingEventContract`, **micro-batcha os válidos no Delta Lake** e envia violações para a **dead-letter queue** `marketing.events.dlq`.
+3. Inspecione tópicos, partições e lag no **Redpanda Console** 👉 **[http://localhost:8087](http://localhost:8087)**.
+
+### 9. Observabilidade de Golden Signals (SRE)
+Acesse o **Grafana** 👉 **[http://localhost:3001](http://localhost:3001)** (`admin`/`admin`):
+1. O dashboard *DaaS API — Golden Signals* já vem provisionado (datasource + JSON).
+2. Gere tráfego navegando no portal e veja **throughput, latência p50/p95/p99, taxa de erro 5xx** e requisições em andamento atualizarem em tempo real.
+3. O Prometheus (porta `9090`) raspa `/metrics` da API e as métricas públicas do Redpanda.
