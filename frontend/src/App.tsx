@@ -7,6 +7,7 @@ import DashboardPage from "./pages/DashboardPage";
 import DataQualityPage from "./pages/DataQualityPage";
 import FeatureStorePage from "./pages/FeatureStorePage";
 import LoginPage from "./pages/LoginPage";
+import MarketingPage from "./pages/MarketingPage";
 import MLOpsPage from "./pages/MLOpsPage";
 import SearchPage from "./pages/SearchPage";
 import TimeTravelPage from "./pages/TimeTravelPage";
@@ -25,6 +26,7 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedLayout />}>
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/marketing" element={<MarketingPage />} />
         <Route path="/time-travel" element={<TimeTravelPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/mlops" element={<MLOpsPage />} />

@@ -460,6 +460,211 @@ table.data-table th {
   justify-content: space-between;
 }
 
+/* --- Executive dashboard --- */
+.period-toggle {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  flex-shrink: 0;
+}
+
+.period-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.period-btn:hover {
+  color: var(--text-primary);
+}
+
+.period-btn.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.hero-card {
+  position: relative;
+  background: linear-gradient(160deg, var(--bg-panel), var(--bg-panel-alt));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 18px 10px;
+  overflow: hidden;
+}
+
+.hero-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hero-label {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.hero-delta {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.hero-delta em {
+  font-style: normal;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-left: 2px;
+}
+
+.hero-delta.positive {
+  color: var(--accent-green);
+}
+
+.hero-delta.negative {
+  color: var(--accent-red);
+}
+
+.hero-value {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 10px 0 6px;
+  letter-spacing: -0.02em;
+}
+
+.hero-spark {
+  margin: 0 -18px -10px;
+  line-height: 0;
+}
+
+.hero-spark svg {
+  width: 100%;
+  display: block;
+}
+
+.split-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+.mix-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mix-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: none;
+  padding: 6px 4px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.mix-row:hover .mix-name {
+  color: var(--text-primary);
+}
+
+.mix-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.mix-name {
+  font-size: 13px;
+  color: var(--text-secondary);
+  width: 96px;
+  flex-shrink: 0;
+}
+
+.mix-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--bg-panel-alt);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mix-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.mix-pct {
+  font-size: 12.5px;
+  font-weight: 700;
+  width: 48px;
+  text-align: right;
+}
+
+.drill-panel {
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Marketing funnel --- */
+.funnel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.funnel-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  margin-bottom: 5px;
+}
+
+.funnel-bar-track {
+  height: 14px;
+  background: var(--bg-panel-alt);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.funnel-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.4s ease;
+}
+
 /* --- AI Copilot chat --- */
 .copilot-window {
   max-height: 55vh;

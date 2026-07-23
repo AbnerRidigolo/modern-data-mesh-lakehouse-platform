@@ -2,9 +2,12 @@ import { apiClient } from "./client";
 import type {
   ApiEnvelope,
   CatalogDomains,
+  CategoryPerformance,
+  CohortCell,
   CopilotChatResponse,
   CopilotStatus,
   CopilotTurn,
+  DailyRevenuePoint,
   FeatureFreshness,
   FeatureRegistry,
   OnlineFeatures,
@@ -16,6 +19,7 @@ import type {
   DriftStatus,
   HealthStatus,
   LineageResponse,
+  MarketingPerformance,
   MonthlyKpi,
   PricingMetadata,
   QuarantineFile,
@@ -46,6 +50,28 @@ export async function getKpis(): Promise<ApiEnvelope<MonthlyKpi[]>> {
 
 export async function clearCache(): Promise<void> {
   await apiClient.post("/api/v1/cache/clear");
+}
+
+export async function getDailyRevenue(days = 90): Promise<ApiEnvelope<DailyRevenuePoint[]>> {
+  const resp = await apiClient.get("/api/v1/analytics/daily-revenue", { params: { days } });
+  return resp.data;
+}
+
+export async function getCategoryPerformance(): Promise<ApiEnvelope<CategoryPerformance[]>> {
+  const resp = await apiClient.get("/api/v1/analytics/category-performance");
+  return resp.data;
+}
+
+export async function getCohorts(): Promise<ApiEnvelope<CohortCell[]>> {
+  const resp = await apiClient.get("/api/v1/analytics/cohorts");
+  return resp.data;
+}
+
+export async function getMarketingPerformance(category?: string): Promise<ApiEnvelope<MarketingPerformance[]>> {
+  const resp = await apiClient.get("/api/v1/analytics/marketing", {
+    params: category ? { category } : {},
+  });
+  return resp.data;
 }
 
 export async function getDeltaTables(): Promise<DeltaTableInfo[]> {
