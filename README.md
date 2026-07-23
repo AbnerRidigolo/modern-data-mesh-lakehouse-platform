@@ -32,46 +32,39 @@ A plataforma foi desenhada seguindo o ciclo de vida clássico da engenharia de d
 
 ```mermaid
 graph TD
-    subgraph Orquestracao ["Orquestração (Apache Airflow no Docker)"]
-        FLOW["Airflow Scheduler"] -->|Trigger Ingestão| INGEST_C["CRM Polars Ingest"]
-        FLOW -->|Trigger Ingestão| INGEST_E["E-Commerce Spark Ingest"]
-        FLOW -->|Trigger Warehouse| DBT_B["dbt build & docs generate"]
-        FLOW -->|Trigger ML Training| ML_T["ML pricing_model Training"]
-        FLOW -->|Trigger Drift| DRIFT_T["ML pricing_drift Check"]
-        FLOW -->|Trigger Vector Indexing| Q_VEC["Qdrant Vector Indexing"]
-        FLOW -->|Trigger Data Quality| DQ_C["Data Quality Check"]
-    end
-
-    subgraph Produtores ["Produtores (Data Mesh & Data Contracts)"]
-        RAW_C["Raw Customers JSON"] -->|Pydantic Contract| INGEST_C
-        RAW_E["Raw Sales JSON"] -->|Pydantic Contract| INGEST_E
+    subgraph Ingestion ["1. Ingestão & Contratos (Paralelo)"]
+        RAW_C["Raw Customers JSON"] -->|Pydantic Contract| INGEST_C["CRM Polars Ingest"]
+        RAW_E["Raw Sales JSON"] -->|Pydantic Contract| INGEST_E["E-Commerce Spark Ingest"]
         INGEST_C -->|Violations| Q_C["Quarantine CRM"]
         INGEST_E -->|Violations| Q_E["Quarantine E-Commerce"]
         INGEST_C -->|Valid Append| DELTA_C[("Delta Lake: Customers")]
         INGEST_E -->|Valid Append| DELTA_S[("Delta Lake: Sales")]
     end
 
-    subgraph DW_Layer ["Data Warehousing (dbt + DuckDB)"]
+    subgraph DW_Layer ["2. Data Warehousing (dbt + DuckDB)"]
         DELTA_C -->|Deduplicado por natural key| DIM_C[("dim_customers")]
         DELTA_S -->|Deduplicado por sale_id| FCT_S[("fct_sales")]
-        DIM_C --> DBT_B
+        DIM_C --> DBT_B["dbt build & docs generate"]
         FCT_S --> DBT_B
         DBT_B -->|Materializa Marts| DDB[("DuckDB Analytics DW")]
     end
 
-    subgraph MLOps_Lifecycle ["Ciclo de Vida de ML, Vetores & DQ"]
-        DDB -->|ml_features_pricing| ML_T
+    subgraph MLOps_Lifecycle ["3. Ciclo de Vida de ML, Vetores & DQ (Paralelo)"]
+        DDB -->|ml_features_pricing| ML_T["ML pricing_model Training"]
         ML_T -->|Calcula P* Otimizado| REG[(Model Registry: Local & MLflow)]
         ML_T -->|Logs de Runs & Métricas| MLF[("MLflow Server")]
-        DDB -->|Preço Semanal vs Treino| DRIFT_T
+        
+        DDB -->|Preço Semanal vs Treino| DRIFT_T["ML pricing_drift Check"]
         DRIFT_T -->|Kolmogorov-Smirnov| DRIFT_J["drift_status.json"]
-        DDB -->|dim_products| Q_VEC
+        
+        DDB -->|dim_products| Q_VEC["Qdrant Vector Indexing"]
         Q_VEC -->|Embeddings| QD[("Qdrant Vector DB")]
-        DDB -->|Validations| DQ_C
+        
+        DDB -->|Validations| DQ_C["Data Quality Check"]
         DQ_C -->|Metrics Report| DQ_R["dq_report.json / dq_history.jsonl"]
     end
 
-    subgraph Servimento ["Camada de Servimento (DaaS)"]
+    subgraph Servimento ["4. Camada de Servimento (DaaS)"]
         DDB -->|Query SQL| API["FastAPI Gateway (JWT)"]
         REG -->|Load pricing_metadata.json| API
         QD -->|Semantic Similarity Search| API
@@ -79,12 +72,16 @@ graph TD
         API -->|Cache Lookup <1ms| REDIS[("Redis Cache")]
     end
 
-    subgraph Portal ["Portal de Governança & BI"]
+    subgraph Portal ["5. Portal de Governança & BI"]
         API --> PORTAL["React Portal (Vite + TypeScript)"]
         DELTA_C -->|Time Travel versioning| PORTAL
         DELTA_S -->|Time Travel versioning| PORTAL
         DBT_B -->|manifest.json Lineage| PORTAL
         DRIFT_J -->|Status Alert| PORTAL
+    end
+
+    subgraph Orquestracao ["Orquestração (Apache Airflow)"]
+        INGEST_C & INGEST_E -->|>>| DBT_B -->|>>| ML_T & DRIFT_T & Q_VEC & DQ_C
     end
 ```
 
