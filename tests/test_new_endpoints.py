@@ -46,7 +46,16 @@ def test_delta_tables_lists_known_data_products(auth_headers):
     resp = client.get("/api/v1/delta/tables", headers=auth_headers)
     assert resp.status_code == 200
     keys = {t["key"] for t in resp.json()}
-    assert keys == {"crm_customers", "ecommerce_sales"}
+    assert keys == {"crm_customers", "ecommerce_sales", "marketing_campaigns"}
+
+
+def test_catalog_includes_marketing_domain(auth_headers):
+    resp = client.get("/api/v1/catalog/domains", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "marketing" in data
+    mkt_field_names = {f["name"] for f in data["marketing"]["contract_fields"]}
+    assert {"campaign", "channel", "spend", "impressions", "clicks"}.issubset(mkt_field_names)
 
 
 def test_delta_unknown_table_history_returns_404(auth_headers):

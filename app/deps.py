@@ -42,8 +42,12 @@ def get_embedding_model():
     return _embedding_model
 
 
-def run_query(query: str) -> list:
-    """Execute a read-only query against the analytics DuckDB database."""
+def run_query(query: str, params: list | None = None) -> list:
+    """Execute a read-only query against the analytics DuckDB database.
+
+    Aceita parâmetros ligados (prepared statement) para evitar injeção de SQL
+    quando a consulta depende de entrada do usuário (filtros de período/categoria).
+    """
     db_path = get_db_path()
     if not os.path.exists(db_path):
         raise FileNotFoundError(f"Arquivo do DuckDB não encontrado em: {db_path}. Execute a pipeline primeiro.")
@@ -51,7 +55,7 @@ def run_query(query: str) -> list:
     conn = duckdb.connect(db_path, read_only=True)
     try:
         cursor = conn.cursor()
-        cursor.execute(query)
+        cursor.execute(query, params) if params else cursor.execute(query)
         columns = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
         return [dict(zip(columns, row, strict=False)) for row in rows]

@@ -118,6 +118,77 @@ services:
     volumes:
       - ./storage/qdrant:/qdrant/storage
 
+  # --- Streaming (Redpanda: broker compatível com Kafka) ---
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092,OUTSIDE://0.0.0.0:19092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092,OUTSIDE://localhost:19092
+    ports:
+      - "19092:19092"   # acesso do host (bootstrap: localhost:19092)
+      - "9644:9644"     # admin API / métricas Prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  redpanda-console:
+    image: redpandadata/console:v2.7.2
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8087:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  # Producer: gera o clickstream de marketing em tempo real
+  stream-producer:
+    build: .
+    command: python -m domains.streaming.producer --rate 5
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      PYTHONPATH: /opt/airflow
+    volumes:
+      - ./domains:/opt/airflow/domains
+    working_dir: /opt/airflow
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: on-failure
+
+  # Consumer: valida contra o contrato e micro-batcha no Delta Lake (+ DLQ)
+  stream-consumer:
+    build: .
+    command: python -m domains.streaming.consumer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      PYTHONPATH: /opt/airflow
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MINIO_ENDPOINT_URL: http://minio:9000
+      AWS_ENDPOINT_URL: http://minio:9000
+      AWS_ALLOW_HTTP: "true"
+    volumes:
+      - ./domains:/opt/airflow/domains
+      - ./storage:/opt/airflow/storage
+    working_dir: /opt/airflow
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: on-failure
+
   api:
     build:
       context: .
@@ -156,3 +227,29 @@ services:
       - "8090:80"
     depends_on:
       - api
+
+  # --- Observabilidade (Prometheus + Grafana) ---
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus

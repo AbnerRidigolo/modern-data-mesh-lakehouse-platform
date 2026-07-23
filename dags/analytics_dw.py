@@ -30,6 +30,10 @@ def trigger_ecommerce():
     from domains.ecommerce.ingest import run_ingestion
     run_ingestion()
 
+def trigger_marketing():
+    from domains.marketing.ingest import run_ingestion
+    run_ingestion()
+
 # 1. CRM Ingestion Task
 crm_task = PythonOperator(
     task_id='crm_customers_ingestion',
@@ -41,6 +45,13 @@ crm_task = PythonOperator(
 ecommerce_task = PythonOperator(
     task_id='ecommerce_sales_ingestion',
     python_callable=trigger_ecommerce,
+    dag=dag,
+)
+
+# 2b. Marketing Ingestion Task
+marketing_task = PythonOperator(
+    task_id='marketing_campaigns_ingestion',
+    python_callable=trigger_marketing,
     dag=dag,
 )
 
@@ -129,4 +140,4 @@ feature_store_task = PythonOperator(
 )
 
 # Lineage & Dependency Flow
-[crm_task, ecommerce_task] >> dbt_task >> [ml_task, drift_task, qdrant_task, dq_task, feature_store_task]
+[crm_task, ecommerce_task, marketing_task] >> dbt_task >> [ml_task, drift_task, qdrant_task, dq_task, feature_store_task]

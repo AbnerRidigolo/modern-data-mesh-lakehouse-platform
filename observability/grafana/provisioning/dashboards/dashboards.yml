@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: Data Mesh Dashboards
+    orgId: 1
+    folder: Data Mesh
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

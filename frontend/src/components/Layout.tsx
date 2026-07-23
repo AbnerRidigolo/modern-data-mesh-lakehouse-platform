@@ -4,7 +4,8 @@ import { getHealth } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
 
 const NAV_ITEMS = [
-  { to: "/", label: "📊 BI Dashboard & Cache", end: true },
+  { to: "/", label: "📊 Executive Dashboard", end: true },
+  { to: "/marketing", label: "📣 Marketing & Growth" },
   { to: "/time-travel", label: "🕰️ Delta Lake Time Travel" },
   { to: "/catalog", label: "🕸️ Catálogo Data Mesh" },
   { to: "/mlops", label: "📈 MLOps: Precificação" },

@@ -60,6 +60,7 @@ def get_delta_storage_options() -> dict:
 DELTA_TABLES = {
     "crm_customers": ("crm", "customers"),
     "ecommerce_sales": ("ecommerce", "sales"),
+    "marketing_campaigns": ("marketing", "campaigns"),
 }
 
 

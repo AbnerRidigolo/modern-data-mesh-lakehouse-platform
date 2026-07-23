@@ -19,14 +19,27 @@ resources:
   - redis.yaml
   - minio.yaml
   - qdrant.yaml
+  # Streaming tier (Redpanda + producer/consumer)
+  - redpanda.yaml
   # App tier
   - mlflow.yaml
   - airflow.yaml
   - api.yaml
   - frontend.yaml
+  # Observability tier (Prometheus + Grafana)
+  - observability.yaml
   # Networking & scaling
   - ingress.yaml
   - hpa.yaml
+
+# Dashboard do Grafana provisionado via ConfigMap gerado a partir do JSON.
+configMapGenerator:
+  - name: grafana-dashboards
+    files:
+      - grafana-dashboard.json
+
+generatorOptions:
+  disableNameSuffixHash: true
 
 # Tags de imagem centralizadas — sobrescritas por overlay conforme necessário.
 images:

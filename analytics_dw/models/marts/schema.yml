@@ -130,3 +130,69 @@ models:
           - not_null
           - dbt_expectations.expect_column_values_to_be_between:
               min_value: 0
+
+  - name: dm_daily_revenue
+    description: "Série temporal diária de receita concluída com média móvel de 7 dias e variação dia-a-dia. Base do gráfico de tendência do dashboard executivo"
+    columns:
+      - name: revenue_date
+        description: "Dia da agregação"
+        tests:
+          - unique
+          - not_null
+      - name: net_revenue
+        description: "Receita líquida (vendas COMPLETED) do dia"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+  - name: dm_category_performance
+    description: "Performance comercial por categoria de produto: receita, pedidos, ticket médio e participação no faturamento. Alimenta o drill-down por categoria do BI"
+    columns:
+      - name: category
+        description: "Categoria de produto"
+        tests:
+          - unique
+          - not_null
+      - name: revenue_share_pct
+        description: "Participação percentual da categoria na receita total"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 100
+
+  - name: dm_customer_cohorts
+    description: "Matriz de retenção por coorte de aquisição (mês da primeira compra x meses subsequentes). Base do heatmap de retenção e leitura de churn"
+    columns:
+      - name: retention_pct
+        description: "Percentual de clientes da coorte ativos no offset de mês"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 100
+      - name: month_offset
+        description: "Distância em meses desde a aquisição da coorte"
+        tests:
+          - not_null
+
+  - name: dm_marketing_performance
+    description: "Performance de marketing no grão mês x categoria: spend, alcance e engajamento cruzados com receita atribuída para derivar CTR, CPC, CPM, ROAS e CAC. Alimenta a página de Marketing do BI"
+    columns:
+      - name: category
+        description: "Categoria de produto alvo da campanha"
+        tests:
+          - not_null
+      - name: spend
+        description: "Investimento de mídia no mês/categoria"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+      - name: ctr_pct
+        description: "Click-through rate (%)"
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 100

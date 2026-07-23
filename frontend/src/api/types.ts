@@ -20,6 +20,49 @@ export interface MonthlyKpi {
   [key: string]: unknown;
 }
 
+export interface DailyRevenuePoint {
+  revenue_date: string;
+  net_revenue: number;
+  orders: number;
+  active_customers: number;
+  revenue_7d_avg: number;
+  revenue_dod_delta: number | null;
+}
+
+export interface CategoryPerformance {
+  category: string;
+  net_revenue: number;
+  orders: number;
+  unique_customers: number;
+  average_ticket: number;
+  revenue_share_pct: number;
+}
+
+export interface CohortCell {
+  cohort_month: string;
+  month_offset: number;
+  cohort_customers: number;
+  active_customers: number;
+  retention_pct: number;
+}
+
+export interface MarketingPerformance {
+  activity_month: string;
+  category: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  orders: number;
+  buyers: number;
+  attributed_revenue: number;
+  ctr_pct: number;
+  cpc: number;
+  cpm: number;
+  roas: number | null;
+  cac: number | null;
+  click_to_order_pct: number | null;
+}
+
 export interface DeltaTableInfo {
   key: string;
   label: string;

@@ -10,7 +10,19 @@ from domains.common.paths import get_db_path
 
 from . import config
 from .deps import cache
-from .routers import auth, catalog, copilot, delta, features, kpis, lineage, ml, quality, search
+from .routers import (
+    analytics,
+    auth,
+    catalog,
+    copilot,
+    delta,
+    features,
+    kpis,
+    lineage,
+    ml,
+    quality,
+    search,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("API_Gateway")
@@ -55,6 +67,7 @@ Instrumentator(
 app.include_router(auth.router)
 app.include_router(copilot.router)
 app.include_router(kpis.router)
+app.include_router(analytics.router)
 app.include_router(ml.router)
 app.include_router(search.router)
 app.include_router(quality.router)

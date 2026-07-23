@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from domains.common.paths import get_quarantine_dir
 from domains.crm.contract import CustomerContract
 from domains.ecommerce.contract import SaleContract
+from domains.marketing.contract import MarketingEventContract
 
 from ..security import get_current_user
 
@@ -46,6 +47,14 @@ DOMAINS = {
         "write_stack": "Apache Spark (PySpark DataFrame API)",
         "partitioning": "status",
         "contract": lambda: _contract_fields(SaleContract),
+    },
+    "marketing": {
+        "name": "Marketing (Campanhas & Mídia)",
+        "owner": "Equipe de Growth (Marketing Team)",
+        "interface": "Delta Lake Table (storage/lakehouse/marketing/campaigns)",
+        "write_stack": "Polars DataFrames (Rust-based)",
+        "partitioning": None,
+        "contract": lambda: _contract_fields(MarketingEventContract),
     },
 }
 

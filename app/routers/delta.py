@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/v1/delta", tags=["delta"])
 TABLE_LABELS = {
     "crm_customers": "CRM Customers",
     "ecommerce_sales": "E-Commerce Sales",
+    "marketing_campaigns": "Marketing Campaigns",
 }
 
 
