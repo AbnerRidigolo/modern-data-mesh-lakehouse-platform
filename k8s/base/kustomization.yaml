@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: data-mesh
+
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/part-of: enterprise-data-mesh
+      app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.example.yaml
+  - storage.yaml
+  # Stateful stores
+  - postgres.yaml
+  - redis.yaml
+  - minio.yaml
+  - qdrant.yaml
+  # App tier
+  - mlflow.yaml
+  - airflow.yaml
+  - api.yaml
+  - frontend.yaml
+  # Networking & scaling
+  - ingress.yaml
+  - hpa.yaml
+
+# Tags de imagem centralizadas — sobrescritas por overlay conforme necessário.
+images:
+  - name: data-mesh/api
+    newTag: latest
+  - name: data-mesh/frontend
+    newTag: latest
+  - name: data-mesh/airflow
+    newTag: latest

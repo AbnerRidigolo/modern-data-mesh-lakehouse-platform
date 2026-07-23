@@ -2,7 +2,7 @@
 lightweight in-memory rate limiter for the login endpoint.
 """
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
@@ -23,7 +23,7 @@ def verify_password(plain_password: str, password_hash: str) -> bool:
 
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
+    expire = datetime.now(UTC) + (
         expires_delta or timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode.update({"exp": expire})
@@ -42,8 +42,8 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
         if username is None:
             raise credentials_exception
         return username
-    except jwt.PyJWTError:
-        raise credentials_exception
+    except jwt.PyJWTError as exc:
+        raise credentials_exception from exc
 
 
 class LoginRateLimiter:

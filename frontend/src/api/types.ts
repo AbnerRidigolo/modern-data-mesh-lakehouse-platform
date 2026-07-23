@@ -84,12 +84,37 @@ export interface PricingDetails {
   revenue_lift_pct: number;
 }
 
+export interface ModelMetrics {
+  r2_score: number;
+  mae: number;
+  rmse?: number;
+  wape?: number;
+  cv_mae_mean?: number;
+  cv_mae_std?: number;
+  cv_wape_mean?: number;
+  elasticity_monotonic_share?: number;
+}
+
 export interface PricingMetadata {
-  model_metrics: { r2_score: number; mae: number };
+  model_metrics: ModelMetrics;
   feature_columns: string[];
   product_one_hot_columns: string[];
   optimal_prices: Record<string, PricingDetails>;
   last_trained: string;
+  champion_model?: string;
+  beats_baseline?: boolean;
+  selection_criteria?: string;
+  baseline_metrics?: ModelMetrics;
+  candidate_metrics?: Record<string, ModelMetrics>;
+  validation?: {
+    scheme: string;
+    holdout_days: number;
+    cv_splits: number;
+    train_rows: number;
+    holdout_rows: number;
+    training_window: { start: string; end: string };
+  };
+  elasticity_check?: { products_checked: number; monotonic_share: number };
 }
 
 export interface DriftProductStatus {
@@ -164,4 +189,64 @@ export interface DataQualityHistoryEntry {
   failed_tests: number;
   total_tests: number;
   status: "Passed" | "Failed";
+}
+
+export interface CopilotStatus {
+  enabled: boolean;
+  model: string | null;
+}
+
+export interface CopilotToolTrace {
+  tool: string;
+  input: Record<string, unknown>;
+  is_error: boolean;
+  result_preview: string;
+}
+
+export interface CopilotChatResponse {
+  answer: string;
+  tool_trace: CopilotToolTrace[];
+  usage: { input_tokens: number; output_tokens: number };
+}
+
+export interface CopilotTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface FeatureDef {
+  name: string;
+  dtype: string;
+  description: string;
+}
+
+export interface FeatureViewDef {
+  entity: string;
+  source_table: string;
+  timestamp_field: string;
+  online_ttl_seconds: number;
+  owner: string;
+  description: string;
+  features: FeatureDef[];
+}
+
+export interface FeatureRegistry {
+  entities: Record<string, { join_key: string; description: string }>;
+  feature_views: Record<string, FeatureViewDef>;
+}
+
+export interface FeatureFreshness {
+  feature_view: string;
+  rows: number;
+  latest_timestamp: string | null;
+  age_hours: number | null;
+  ttl_hours: number;
+  is_stale: boolean | null;
+}
+
+export interface OnlineFeatures {
+  entity_id: string | number;
+  features: Record<string, unknown> | null;
+  event_timestamp?: string;
+  source: string;
 }

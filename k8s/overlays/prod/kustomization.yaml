@@ -1,0 +1,65 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Overlay de PRODUÇÃO: mais réplicas, limites de recurso maiores, HPA amplo,
+# Ingress com TLS e imagens pinadas por versão (evita :latest em produção).
+
+resources:
+  - ../../base
+
+images:
+  - name: data-mesh/api
+    newTag: "1.2.0"
+  - name: data-mesh/frontend
+    newTag: "1.2.0"
+  - name: data-mesh/airflow
+    newTag: "1.2.0"
+
+patches:
+  # API: mais réplicas e teto de recursos maior
+  - target:
+      kind: Deployment
+      name: api
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 2Gi
+  - target:
+      kind: Deployment
+      name: frontend
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3
+  # HPA mais amplo em produção
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: api
+    patch: |
+      - op: replace
+        path: /spec/minReplicas
+        value: 3
+      - op: replace
+        path: /spec/maxReplicas
+        value: 10
+  # TLS no Ingress (requer cert-manager ou Secret TLS provisionado)
+  - target:
+      kind: Ingress
+      name: platform-ingress
+    patch: |
+      - op: add
+        path: /metadata/annotations/cert-manager.io~1cluster-issuer
+        value: letsencrypt-prod
+      - op: replace
+        path: /metadata/annotations/nginx.ingress.kubernetes.io~1ssl-redirect
+        value: "true"
+      - op: add
+        path: /spec/tls
+        value:
+          - hosts:
+              - data-mesh.example.com
+              - api.data-mesh.example.com
+            secretName: platform-tls

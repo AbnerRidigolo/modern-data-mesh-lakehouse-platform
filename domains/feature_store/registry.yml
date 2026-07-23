@@ -1,0 +1,76 @@
+# Registry declarativo do Feature Store — fonte única de governança.
+#
+# Descreve entidades (chaves de junção), feature views (tabelas offline no
+# DuckDB materializadas pelo dbt) e as features servidas. A engine (store.py)
+# lê este arquivo para: (1) validar pedidos de features, (2) montar o
+# point-in-time join do offline store, (3) materializar o online store (Redis)
+# e (4) expor o catálogo governado via API.
+
+entities:
+  product:
+    join_key: product_name
+    description: "Produto do catálogo de e-commerce."
+  customer:
+    join_key: customer_id
+    description: "Cliente cadastrado no CRM."
+
+feature_views:
+  product_demand:
+    entity: product
+    source_table: ft_product_features       # tabela offline (dbt/DuckDB)
+    timestamp_field: feature_date           # coluna de evento p/ point-in-time join
+    online_ttl_seconds: 86400               # frescor esperado no online store (24h)
+    owner: "ML Platform Team"
+    description: "Janelas móveis de demanda, receita e posicionamento de preço por produto."
+    features:
+      - name: units_7d
+        dtype: int
+        description: "Unidades vendidas nos últimos 7 dias."
+      - name: revenue_7d
+        dtype: float
+        description: "Receita dos últimos 7 dias."
+      - name: units_30d
+        dtype: int
+        description: "Unidades vendidas nos últimos 30 dias."
+      - name: revenue_30d
+        dtype: float
+        description: "Receita dos últimos 30 dias."
+      - name: avg_price_30d
+        dtype: float
+        description: "Preço médio praticado nos últimos 30 dias."
+      - name: price_volatility_30d
+        dtype: float
+        description: "Desvio-padrão do preço nos últimos 30 dias."
+      - name: price_ratio_30d
+        dtype: float
+        description: "Razão média preço próprio / concorrente (30 dias)."
+
+  customer_activity:
+    entity: customer
+    source_table: ft_customer_features
+    timestamp_field: feature_timestamp
+    online_ttl_seconds: 86400
+    owner: "CRM Analytics Team"
+    description: "Snapshot de atividade, valor e segmentação comportamental por cliente."
+    features:
+      - name: total_orders
+        dtype: int
+        description: "Total de pedidos concluídos (histórico completo)."
+      - name: lifetime_value
+        dtype: float
+        description: "Receita acumulada do cliente."
+      - name: orders_90d
+        dtype: int
+        description: "Pedidos nos últimos 90 dias."
+      - name: revenue_90d
+        dtype: float
+        description: "Receita nos últimos 90 dias."
+      - name: avg_ticket_90d
+        dtype: float
+        description: "Ticket médio nos últimos 90 dias."
+      - name: recency_days
+        dtype: int
+        description: "Dias desde a última compra."
+      - name: rfm_segment
+        dtype: str
+        description: "Segmento comportamental RFM."

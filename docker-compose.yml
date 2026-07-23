@@ -134,6 +134,9 @@ services:
       AWS_SECRET_ACCESS_KEY: minioadmin
       MINIO_ENDPOINT_URL: http://minio:9000
       FRONTEND_ORIGINS: http://localhost:8090
+      # AI Copilot: repassa a credencial do host (defina ANTHROPIC_API_KEY antes do docker compose up)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      COPILOT_MODEL: ${COPILOT_MODEL:-claude-opus-4-8}
       # JWT_SECRET_KEY / ADMIN_PASSWORD_HASH: override via .env for anything beyond local demo use.
     volumes:
       - ./storage:/code/storage

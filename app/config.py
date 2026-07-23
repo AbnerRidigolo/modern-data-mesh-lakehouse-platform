@@ -54,3 +54,12 @@ REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", "6389"))
 QDRANT_HOST = os.environ.get("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6335"))
+
+# --- AI Copilot (Claude) ---
+# O SDK da Anthropic resolve a credencial via ANTHROPIC_API_KEY (ou perfil de
+# login). Sem credencial, o Copilot fica desabilitado e a API responde 503.
+COPILOT_ENABLED = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+COPILOT_MODEL = os.environ.get("COPILOT_MODEL", "claude-opus-4-8")
+COPILOT_MAX_TOKENS = int(os.environ.get("COPILOT_MAX_TOKENS", "8192"))
+COPILOT_MAX_TOOL_ITERATIONS = int(os.environ.get("COPILOT_MAX_TOOL_ITERATIONS", "6"))
+COPILOT_SQL_ROW_LIMIT = int(os.environ.get("COPILOT_SQL_ROW_LIMIT", "50"))

@@ -5,7 +5,6 @@ analytics_dw:
       path: "{{ env_var('DB_PATH', '/opt/airflow/storage/analytics.duckdb') }}"
       extensions:
         - delta
-        - parquet
         - httpfs
       settings:
         timezone: UTC

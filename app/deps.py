@@ -7,9 +7,10 @@ import os
 import duckdb
 from qdrant_client import QdrantClient
 
+from domains.common.paths import get_db_path
+
 from . import config
 from .cache import RedisCacheWrapper
-from domains.common.paths import get_db_path
 
 logger = logging.getLogger("API_Deps")
 
@@ -17,6 +18,18 @@ cache = RedisCacheWrapper(host=config.REDIS_HOST, port=config.REDIS_PORT)
 qdrant_client = QdrantClient(host=config.QDRANT_HOST, port=config.QDRANT_PORT)
 
 _embedding_model = None
+_feature_store = None
+
+
+def get_feature_store():
+    """Singleton do Feature Store, reaproveitando o cliente Redis do cache como online store."""
+    global _feature_store
+    if _feature_store is None:
+        from domains.feature_store.store import FeatureStore
+
+        redis_client = cache.r if cache.enabled else None
+        _feature_store = FeatureStore(redis_client=redis_client)
+    return _feature_store
 
 
 def get_embedding_model():
@@ -41,6 +54,6 @@ def run_query(query: str) -> list:
         cursor.execute(query)
         columns = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
-        return [dict(zip(columns, row)) for row in rows]
+        return [dict(zip(columns, row, strict=False)) for row in rows]
     finally:
         conn.close()

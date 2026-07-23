@@ -7,6 +7,24 @@ on:
     branches: [ main, master ]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install ruff
+      run: pip install ruff==0.15.22
+
+    - name: Run ruff
+      run: ruff check .
+
   backend-test:
     runs-on: ubuntu-latest
 

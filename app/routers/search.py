@@ -6,9 +6,10 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from domains.common.paths import get_logs_dir, get_model_dir
+
 from ..deps import cache, get_embedding_model, qdrant_client
 from ..security import get_current_user
-from domains.common.paths import get_logs_dir, get_model_dir
 
 logger = logging.getLogger("API_Search")
 router = APIRouter(prefix="/api/v1", tags=["search"])
@@ -42,7 +43,7 @@ def _lookup_pricing_details(product_name: str):
     if not os.path.exists(metadata_file):
         return None
     try:
-        with open(metadata_file, "r", encoding="utf-8") as f:
+        with open(metadata_file, encoding="utf-8") as f:
             meta = json.load(f)
         optimal_prices = meta.get("optimal_prices", {})
         hit_name = product_name.lower()
@@ -115,7 +116,7 @@ def search_products(query: str, current_user: str = Depends(get_current_user)):
         return {"source": "database_qdrant", "query_time_seconds": round(query_time, 4), "data": results}
     except Exception as e:
         logger.error(f"Erro na busca vetorial: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/search/logs")
@@ -126,11 +127,11 @@ def get_search_logs(limit: int = 50, current_user: str = Depends(get_current_use
 
     try:
         logs = []
-        with open(log_file, "r", encoding="utf-8") as f:
+        with open(log_file, encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     logs.append(json.loads(line))
         return logs[::-1][:limit]
     except Exception as e:
         logger.error(f"Erro ao ler logs de busca: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

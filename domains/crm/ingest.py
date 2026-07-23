@@ -1,10 +1,12 @@
-import os
 import json
 import logging
-import polars as pl
+import os
 from datetime import datetime
-from pydantic import ValidationError
+
+import polars as pl
 from deltalake.writer import write_deltalake
+from pydantic import ValidationError
+
 try:
     from .contract import CustomerContract
 except ImportError:
@@ -20,7 +22,7 @@ def run_ingestion():
     raw_dir = os.path.join(base_dir, "storage", "raw", "customers_data")
     delta_path = os.path.join(base_dir, "storage", "lakehouse", "crm", "customers")
     quarantine_dir = os.path.join(base_dir, "storage", "raw", "quarantine", "crm")
-    
+
     os.makedirs(quarantine_dir, exist_ok=True)
 
     if not os.path.exists(raw_dir) or not os.listdir(raw_dir):
@@ -34,15 +36,15 @@ def run_ingestion():
     for file_name in os.listdir(raw_dir):
         if not file_name.endswith(".json"):
             continue
-            
+
         file_path = os.path.join(raw_dir, file_name)
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
-                
+
             # Data can be a single dict or list of dicts
             records = data if isinstance(data, list) else [data]
-            
+
             for record in records:
                 try:
                     # Validate against Data Contract
@@ -56,10 +58,10 @@ def run_ingestion():
                     quarantine_file = os.path.join(quarantine_dir, f"error_{datetime.now().timestamp()}_{record.get('id', 'unknown')}.json")
                     with open(quarantine_file, "w", encoding="utf-8") as qf:
                         json.dump({"record": record, "errors": json.loads(e.json()), "timestamp": str(datetime.now())}, qf, indent=2)
-                        
+
             # Archive/delete processed file
             os.remove(file_path)
-            
+
         except Exception as e:
             logger.error(f"Erro ao processar arquivo {file_name}: {e}")
 
@@ -71,19 +73,19 @@ def run_ingestion():
 
     # Convert to Polars DataFrame (CRM Domain Stack: Polars)
     df = pl.DataFrame(valid_records)
-    
+
     # Cast created_at to timestamp (Delta Lake/Parquet compatibility)
     df = df.with_columns(pl.col("created_at").cast(pl.Datetime))
 
     # Write Polars DataFrame to Delta Lake (support S3/MinIO if configured)
     s3_enabled = os.environ.get("AWS_ACCESS_KEY_ID") is not None
-    
+
     if s3_enabled:
         bucket_name = "lakehouse"
         endpoint = os.environ.get("MINIO_ENDPOINT_URL", "http://localhost:9000")
         aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID", "minioadmin")
         aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "minioadmin")
-        
+
         try:
             import boto3
             from botocore.client import Config

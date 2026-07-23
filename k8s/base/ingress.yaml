@@ -1,0 +1,33 @@
+# Ingress com dois hosts: o portal React e a API DaaS. Manter hosts separados
+# evita o problema de rota da rota de health "/" da API colidir com o SPA, e
+# deixa o CORS explícito. Requer um ingress controller (ex: ingress-nginx).
+# Para uso local, mapeie ambos os hosts para o IP do cluster em /etc/hosts.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: platform-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: data-mesh.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+    - host: api.data-mesh.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 8000

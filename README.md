@@ -1,8 +1,8 @@
 # Enterprise Data Mesh & Lakehouse Platform
 
-**Delta Lake · Airflow · dbt · DuckDB · FastAPI · Redis · MLflow · Qdrant · React + TypeScript**
+**Delta Lake · Airflow · dbt · DuckDB · FastAPI · Redis · MLflow · Qdrant · Claude (LLM) · React + TypeScript**
 
-Este projeto implementa uma **Plataforma de Dados de Nível de Produtividade Industrial (Lead/Staff Data Engineer & MLOps)**. Ela utiliza o paradigma de **Data Mesh** (domínios descentralizados expostos como produtos de dados), armazenamento colunar transacional (**Lakehouse com Delta Lake**), engenharia de analytics (**dbt Core + DuckDB**), servimento performático (**FastAPI + cache Redis**), modelagem e ciclo de vida de ML (**MLflow + Random Forest + Drift Monitor**), busca semântica vetorial (**Qdrant + FastEmbed**), observabilidade de qualidade de dados (**Data Quality Engine**), orquestração automatizada (**Apache Airflow**) e um **Portal de Governança em React + TypeScript** consumindo tudo via API autenticada com JWT.
+Este projeto implementa uma **Plataforma de Dados e IA de Nível de Produtividade Industrial (Data Engineering + AI Engineering)**. Ela utiliza o paradigma de **Data Mesh** (domínios descentralizados expostos como produtos de dados), armazenamento colunar transacional (**Lakehouse com Delta Lake**), engenharia de analytics (**dbt Core + DuckDB**), servimento performático (**FastAPI + cache Redis**), modelagem e ciclo de vida de ML (**MLflow + Random Forest + Drift Monitor**), busca semântica vetorial (**Qdrant + FastEmbed**), um **AI Copilot com LLM (Claude) orquestrado via tool use** — text-to-SQL com guardrails e RAG sobre o catálogo —, observabilidade de qualidade de dados (**Data Quality Engine**), orquestração automatizada (**Apache Airflow**) e um **Portal de Governança em React + TypeScript** consumindo tudo via API autenticada com JWT.
 
 ---
 
@@ -14,17 +14,20 @@ A plataforma foi desenhada seguindo o ciclo de vida clássico da engenharia de d
 |---|---|
 | **Geração** | Fontes simuladas de CRM e E-Commerce (`domains/generate_mock_data.py`) produzindo JSONs brutos |
 | **Ingestão** | Polars (CRM) e PySpark (E-Commerce) com **Data Contracts Pydantic** e quarentena de violações |
-| **Transformação** | dbt Core sobre DuckDB — staging → dimensões/fatos (Kimball) → marts de KPI e features de ML |
+| **Transformação** | dbt Core sobre DuckDB — staging → dimensões/fatos (Kimball) → marts de KPI, LTV/RFM e features de ML, com **modelo incremental** (`fct_sales`) e **snapshot SCD Type 2** de clientes |
 | **Disponibilização** | FastAPI (DaaS) com cache Redis, busca vetorial Qdrant e portal React |
 | **Armazenamento** | Delta Lake (local ou S3/MinIO) com ACID, Time Travel e schema evolution; DuckDB como DW analítico |
 | **Análise** | Dashboard de KPIs, curvas de elasticidade de preço, search analytics |
-| **Machine Learning** | Treino de Random Forest (precificação dinâmica), tracking MLflow, monitoramento de drift (KS test + Evidently) |
+| **Machine Learning** | Pipeline de precificação com **validação temporal** (holdout + TimeSeriesSplit), **baseline obrigatório**, comparação de candidatos com **restrição de monotonicidade** preço→demanda, seleção com **gate de validade econômica**, WAPE/RMSE/MAE/R², tracking MLflow (nested runs) e monitoramento de drift (KS test + Evidently) |
+| **Feature Store** 🗄️ | Registry declarativo (YAML), **offline store** (feature views dbt/DuckDB) consumido via **point-in-time join (ASOF)** anti-leakage no treino, **online store** (Redis) materializado pelo Airflow para serving em baixa latência, monitoramento de frescor (TTL) e catálogo governado com owners |
+| **IA Generativa / LLM** 🤖 | **AI Copilot** com Claude (Anthropic SDK): loop agêntico com tool use, text-to-SQL com guardrails sobre o DuckDB, RAG via busca vetorial Qdrant, trace de ferramentas auditável, prompt caching e tratamento de refusals |
 | **Segurança** 🔐 | JWT com segredo via env var, senha admin com hash bcrypt, CORS restrito, rate limit no login — **zero segredos hardcoded** |
 | **Gerenciamento de dados** | Catálogo de domínios com contratos documentados, quarentena auditável, lineage dbt |
-| **DataOps** | CI GitHub Actions (pytest backend + typecheck/build frontend), testes dbt + dbt-expectations, Data Quality Engine com histórico |
+| **DataOps** | CI GitHub Actions (lint ruff + pytest backend + typecheck/build frontend), testes dbt + dbt-expectations, testes unitários do DQ Engine, métricas Prometheus em `/metrics` |
 | **Arquitetura de dados** | Data Mesh (domínios donos dos seus produtos), Lakehouse em camadas, Star Schema |
-| **Orquestração** | Apache Airflow com DAG unificada e dependências explícitas entre ingestão, DW, ML, vetores e DQ |
-| **Engenharia de software** | Backend modular (routers FastAPI + módulos compartilhados), frontend tipado (TypeScript), paths centralizados, testes automatizados |
+| **Orquestração** | Apache Airflow com DAG unificada e dependências explícitas entre ingestão, DW, ML, vetores, DQ e feature store |
+| **Infraestrutura / DevOps** ☸️ | Deploy em **Kubernetes** via Kustomize (base + overlays dev/prod): StatefulSets + PVC para os stores, volume RWX compartilhado, probes, resource limits, **HPA** na API, Ingress e segregação ConfigMap/Secret — além do docker-compose para uso local |
+| **Engenharia de software** | Backend modular (routers FastAPI + módulos compartilhados), frontend tipado (TypeScript), paths centralizados, linting ruff, testes automatizados |
 
 ---
 
@@ -96,6 +99,7 @@ graph TD
 │   ├── security.py           # JWT, bcrypt e rate limit de login
 │   ├── deps.py               # Dependências compartilhadas (DuckDB, Redis, Qdrant)
 │   ├── cache.py              # Wrapper Redis com fallback em memória
+│   ├── services/copilot.py   # AI Copilot: loop agêntico Claude + tools (SQL/RAG)
 │   └── routers/              # Endpoints por domínio funcional
 │       ├── auth.py           #   POST /api/v1/auth/token
 │       ├── kpis.py           #   KPIs, clientes e cache
@@ -115,12 +119,16 @@ graph TD
 │   ├── common/paths.py       # Resolução centralizada de paths (local/container/S3)
 │   ├── crm/                  # Contrato Pydantic + ingestão Polars
 │   ├── ecommerce/            # Contrato Pydantic + ingestão PySpark
-│   └── ml_pricing/           # Treino, drift, indexação Qdrant, Data Quality
-├── analytics_dw/             # Projeto dbt (staging, marts, seeds, testes)
+│   ├── ml_pricing/           # Treino, features compartilhadas, drift, Data Quality
+│   └── feature_store/        # Registry YAML + engine (point-in-time join + online store)
+├── analytics_dw/             # Projeto dbt (staging, marts, feature views, snapshots SCD2, testes)
+│   └── snapshots/            # customers_snapshot: historização SCD Type 2
 ├── dags/                     # DAGs do Apache Airflow
-├── tests/                    # Testes pytest (contratos + API + endpoints)
-├── docker-compose.yml        # Infraestrutura completa (9 serviços)
-└── .github/workflows/ci.yml  # CI: backend-test (pytest) + frontend-build (tsc/vite)
+├── tests/                    # Testes pytest (contratos + API + endpoints + DQ + ML + feature store)
+├── k8s/                      # Deploy Kubernetes (Kustomize base + overlays dev/prod) + Makefile
+├── ruff.toml                 # Configuração de linting Python
+├── docker-compose.yml        # Infraestrutura completa (10 serviços) para uso local
+└── .github/workflows/ci.yml  # CI: lint (ruff) + backend-test (pytest) + frontend-build (tsc/vite)
 ```
 
 ---
@@ -131,15 +139,71 @@ graph TD
 2. **PySpark (E-Commerce Sales)**: Processamento distribuído de alto rendimento simulando Big Data, gravando dados particionados por `status`.
 3. **Polars (CRM Customers)**: Motor de DataFrames em Rust ultra-rápido para processamento eficiente em memória de cadastros estruturados.
 4. **Delta Lake (Lakehouse)**: Armazenamento analítico colunar transacional com suporte a transações ACID, versionamento de dados (Time Travel) e evolução de esquema (`mergeSchema`).
-5. **dbt Core & DuckDB**: Criação de Dimensões, Fatos (Kimball Star Schema) e KPI Marts analíticos, com testes de schema (`unique`, `not_null`, `accepted_values`, dbt-expectations) e geração automática de documentação e grafo de linhagem.
+5. **dbt Core & DuckDB**: Criação de Dimensões, Fatos (Kimball Star Schema) e KPI Marts analíticos, com **materialização incremental** (`fct_sales` com watermark e lookback para late-arriving data), **snapshot SCD Type 2** (histórico de mudanças cadastrais), mart de **LTV/segmentação RFM**, testes de schema (`unique`, `not_null`, `accepted_values`, dbt-expectations) e geração automática de documentação e grafo de linhagem. A origem do lakehouse é parametrizada via `LAKEHOUSE_ROOT` (roda local ou S3/MinIO).
 6. **FastAPI (DaaS API Gateway)**: Exposição de dados analíticos via endpoints HTTP autenticados (JWT), organizados em routers modulares, isolando o banco de dados de acessos diretos de terceiros.
 7. **Redis (Caching Layer)**: Armazenamento chave-valor em memória cacheando resultados analíticos da API com TTL para latências inferiores a 1ms.
 8. **Pydantic v2 (Data Contracts)**: Validação rígida de esquemas na entrada do pipeline. Qualquer dado corrompido é enviado para a quarentena de auditoria.
-9. **MLflow Tracking**: Servidor centralizado para controle de ciclo de vida de modelos, logging de parâmetros, métricas de regressão ($R^2$ e MAE) e artefatos de treinamento.
+9. **MLflow Tracking & Pipeline de ML com Rigor Estatístico**: O treinamento de precificação segue práticas de cientista de dados sênior — **split temporal** (nunca aleatório: evita vazamento de futuro em séries temporais), **TimeSeriesSplit CV** para seleção, **baseline de mediana por produto** como piso de qualidade, candidatos comparados (Random Forest vs HistGradientBoosting com `monotonic_cst`), **gate de validade econômica** (o campeão precisa produzir curvas de elasticidade não-crescentes — um modelo com WAPE melhor mas curvas absurdas é reprovado), métricas WAPE/RMSE/MAE/R², **feature engineering compartilhada entre treino e servimento** (zero training-serving skew) e MLflow com nested runs por candidato + model registry.
 10. **Drift Monitor & Time Travel**: Análise estatística de desvio de dados (Kolmogorov-Smirnov + Evidently AI) e suporte a carregamento de dados históricos do Delta Lake para retreino retroativo reprodutível.
 11. **React + TypeScript (Portal BI & Governança)**: SPA (Vite + React Query + Recharts) que consome o DaaS API Gateway via JWT e integra catálogo de governança, lineage dbt dinâmico (grafo SVG), monitoramento de drift de ML, gráficos de KPIs, comparador de histórico de commits do Delta Lake com Rollback físico, busca semântica vetorial e observabilidade de Data Quality.
 12. **Qdrant & FastEmbed**: Banco de dados vetorial corporativo (Qdrant) integrado com pipeline leve de embeddings em ONNX (FastEmbed) para buscas semânticas em linguagem natural no catálogo de produtos.
 13. **Data Quality Observability**: Motor customizado de qualidade de dados integrado no Airflow e DuckDB para monitorar anomalias de faturamento, integridade referencial, volume diário e quedas bruscas de vendas.
+14. **AI Copilot (Claude / Anthropic SDK)**: Assistente analítico com **LLM orquestrado via tool use** — o modelo decide entre executar **text-to-SQL com guardrails** (apenas `SELECT`/`WITH` em conexão DuckDB read-only, statement único, LIMIT imposto, blocklist de DDL/DML) ou fazer **RAG com a busca vetorial Qdrant** do catálogo. Loop agêntico manual com trace auditável de cada ferramenta (a UI mostra o SQL executado), prompt caching do system prompt, tratamento de `refusal` e degradação graciosa sem credencial.
+
+---
+
+## 🤖 AI Engineering: o Copilot Analítico
+
+A camada de IA generativa demonstra o ciclo completo de engenharia de LLM em produção:
+
+```
+Pergunta em linguagem natural (React chat)
+        │ POST /api/v1/copilot/chat (JWT)
+        ▼
+FastAPI ──► Claude (claude-opus-4-8, adaptive thinking, prompt caching)
+        │        │
+        │        ├── tool: query_analytics_dw ──► guardrails SQL ──► DuckDB (read-only)
+        │        └── tool: search_products_semantic ──► FastEmbed ──► Qdrant
+        ▼
+Resposta + tool_trace auditável (SQL executado, erros, tokens)
+```
+
+**Decisões de engenharia:**
+* **Guardrails em profundidade**: validação sintática (regex de DDL/DML, statement único, apenas `SELECT`/`WITH`) *e* conexão DuckDB aberta em `read_only=True` — o SQL gerado pelo modelo nunca consegue escrever.
+* **Transparência**: cada chamada de ferramenta vira um item no `tool_trace` retornado à UI — o usuário audita exatamente qual SQL foi executado.
+* **Grounding no schema real**: o system prompt documenta as tabelas dos marts dbt, e o modelo responde "não sei" quando os dados não cobrem a pergunta.
+* **Resiliência**: erros de ferramenta voltam ao modelo como `tool_result` com `is_error` (o modelo se recupera), `stop_reason: refusal` é tratado, e erros do provedor viram HTTP 429/502/503 tipados.
+* **Custo**: system prompt com `cache_control` (prompt caching), histórico enxuto (somente texto), limite de iterações de ferramenta.
+
+Para ativar: `export ANTHROPIC_API_KEY=sk-ant-...` antes do `docker compose up` (ou no ambiente do uvicorn). Sem a chave, a plataforma funciona normalmente e o Copilot responde 503 com instrução clara.
+
+---
+
+## 🗄️ Feature Store
+
+Um feature store enxuto e completo construído sobre a stack existente (sem framework dedicado), demonstrando os quatro pilares de uma plataforma de features de produção:
+
+```
+                     registry.yml  (governança declarativa: entidades, views, TTL, owners)
+                            │
+   ┌────────────── OFFLINE STORE ──────────────┐      ┌───── ONLINE STORE ─────┐
+   │  feature views dbt/DuckDB                  │      │  Redis (fallback memória) │
+   │  ft_product_features (produto-dia, 7d/30d) │      │  snapshot + TTL por chave │
+   │  ft_customer_features (cliente, 90d, RFM)  │      └───────────▲────────────┘
+   └───────────────────┬────────────────────────┘                 │ materialize (Airflow)
+                       │ point-in-time join (ASOF)                 │
+             ┌─────────▼─────────┐                        ┌────────┴─────────┐
+             │  TREINO (offline) │                        │ SERVING (online) │
+             │  entity_df + ts →  │                        │ GET features/online │
+             │  features de t-1   │                        │  latência baixa   │
+             └────────────────────┘                        └───────────────────┘
+```
+
+**Point-in-time correctness (anti-leakage)** — o coração do feature store. Para montar o dataset de treino, cada evento (produto/cliente + timestamp) recebe **as features vigentes naquele instante**, via `ASOF LEFT JOIN` nativo do DuckDB (`event_ts >= feature_ts`). Um evento em 15/02 recebe a janela de demanda de 15/02, **nunca** a de 15/07 — o vazamento temporal mais comum em pipelines de ML fica impossível por construção. Coberto por testes que provam o comportamento (`tests/test_feature_store.py`).
+
+**Online store & materialização** — a task `feature_store_materialization` (Airflow, após o `dbt build`) escreve o snapshot mais recente por entidade no Redis com TTL. O serving (`GET /api/v1/features/online/{view}/{id}`) lê em baixa latência, com **fallback automático para o offline store** em cache miss — o serving nunca fica sem resposta.
+
+**Governança & frescor** — o registry YAML (entidades, views, features tipadas, owners, TTL) é exposto em `GET /api/v1/features/registry`, e `GET /api/v1/features/freshness` reporta a idade do dado vs TTL por view (sinal de monitoramento). Tudo navegável na página **Feature Store** do portal.
 
 ---
 
@@ -151,7 +215,8 @@ Todos os endpoints (exceto `/` e o login) exigem `Authorization: Bearer <token>`
 |---|---|---|
 | `POST` | `/api/v1/auth/token` | Login OAuth2 (form) → token JWT |
 | `GET` | `/api/v1/kpis` | KPIs mensais consolidados (cacheado) |
-| `GET` | `/api/v1/customers` | Dimensão de clientes (cacheado) |
+| `GET` | `/api/v1/customers` | Dimensão de clientes com paginação (`page`, `page_size`) |
+| `GET` | `/api/v1/customers/ltv` | Mart de LTV + segmentação RFM (filtro por `segment`) |
 | `POST` | `/api/v1/cache/clear` | Limpa o cache Redis/memória |
 | `GET` | `/api/v1/predict/optimal-price` | Preço ótimo P* por produto |
 | `GET` | `/api/v1/ml/pricing-metadata` | Métricas do modelo + otimizações |
@@ -169,6 +234,13 @@ Todos os endpoints (exceto `/` e o login) exigem `Authorization: Bearer <token>`
 | `GET` | `/api/v1/lineage` | Grafo de linhagem dbt (manifest.json) |
 | `GET` | `/api/v1/catalog/domains` | Catálogo de domínios + contratos |
 | `GET` | `/api/v1/quarantine/{domain}` | Violações de contrato em quarentena |
+| `GET` | `/api/v1/copilot/status` | Status do AI Copilot (habilitado + modelo) |
+| `POST` | `/api/v1/copilot/chat` | Chat com o AI Copilot (LLM + tool use + trace auditável) |
+| `GET` | `/api/v1/features/registry` | Catálogo governado do feature store (entidades, views, owners, TTL) |
+| `GET` | `/api/v1/features/freshness` | Frescor por feature view (idade do dado vs TTL) |
+| `GET` | `/api/v1/features/online/{view}/{id}` | Serving online de features de uma entidade |
+| `POST` | `/api/v1/features/materialize` | Materializa o snapshot mais recente no online store |
+| `GET` | `/metrics` | Métricas Prometheus (contadores e histogramas de latência por rota) |
 
 Documentação Swagger interativa: **[http://localhost:8000/docs](http://localhost:8000/docs)**
 
@@ -263,6 +335,8 @@ O ambiente sobe pronto para uso local (`admin` / `adminpassword`), mas **nenhum 
 | `ADMIN_PASSWORD_HASH` | Hash bcrypt da senha do admin | Usa hash da senha padrão e **loga aviso** |
 | `FRONTEND_ORIGINS` | Origens permitidas no CORS (separadas por vírgula) | Libera apenas `localhost` (dev/preview) |
 | `LOGIN_MAX_ATTEMPTS` / `LOGIN_LOCKOUT_SECONDS` | Rate limit do login | `5` tentativas / `60`s de bloqueio |
+| `ANTHROPIC_API_KEY` | Credencial do AI Copilot (Claude) | Copilot desabilitado (API responde 503) |
+| `COPILOT_MODEL` | Modelo do Copilot | `claude-opus-4-8` |
 
 Para gerar um novo hash de senha:
 ```bash
@@ -275,19 +349,44 @@ Para qualquer ambiente além do uso local, defina `JWT_SECRET_KEY` e `ADMIN_PASS
 
 ## ⚙️ CI/CD (GitHub Actions)
 
-O workflow `.github/workflows/ci.yml` roda em cada push/PR para `main` com dois jobs paralelos:
+O workflow `.github/workflows/ci.yml` roda em cada push/PR para `main` com três jobs paralelos:
 
-* **`backend-test`**: Python 3.11 + `pip install -r requirements.txt` + `pytest tests/`.
+* **`lint`**: `ruff check .` — estilo, imports, bugs prováveis (flake8-bugbear) e sintaxe moderna (pyupgrade).
+* **`backend-test`**: Python 3.11 + `pip install -r requirements.txt` + `pytest tests/` (contratos, auth JWT, endpoints, Data Quality, pipeline de ML e feature store).
 * **`frontend-build`**: Node 20 + `npm ci` + `npm run build` (typecheck TypeScript + build Vite).
+
+---
+
+## ☸️ Deploy em Kubernetes
+
+Além do docker-compose (uso local), a plataforma pode ser implantada em Kubernetes via **Kustomize** (`k8s/`), reproduzindo a topologia com práticas de produção:
+
+* **StatefulSets + PVC** para os stores com estado (Postgres, Redis, MinIO, Qdrant) e um **volume `ReadWriteMany` compartilhado** (`/storage`: DuckDB, model registry, MLflow, relatórios de DQ) montado por API, MLflow e Airflow.
+* **Deployments** para API, frontend, MLflow e Airflow (webserver + scheduler), com o init do Airflow como **`Job`**.
+* **Probes** de liveness/readiness em todos os serviços, **requests/limits** de recursos, **`HorizontalPodAutoscaler`** na API (CPU), **`Ingress`** com dois hosts (portal + API) e **segregação ConfigMap/Secret** (segredos nunca no código).
+* **Overlays `dev`/`prod`**: dev com réplica única e imagens `:dev`; prod com 3 réplicas, HPA de 3→10, limites maiores, imagens pinadas por versão e Ingress TLS (cert-manager).
+
+```bash
+# renderiza e valida sem cluster
+kubectl kustomize k8s/overlays/dev
+
+# build + load das imagens e deploy (kind/minikube)
+make -C k8s build load deploy
+kubectl -n data-mesh get pods,svc,hpa,ingress
+```
+
+Guia completo (build das imagens com `VITE_API_URL`, ingress controller, metrics-server, `/etc/hosts`, injeção da chave do Copilot): **[`k8s/README.md`](k8s/README.md)**.
 
 ---
 
 ## 🕰️ Testando os Recursos "Outro Nível"
 
-### 1. MLflow Tracking UI
-Acesse 👉 **[http://localhost:5001](http://localhost:5001)** para verificar o painel de experimentos. Toda vez que o modelo é retreinado via Airflow:
-* Um run é criado na plataforma "Dynamic Pricing Optimization".
-* Hiperparâmetros, R2 Score, MAE e o arquivo de metadados JSON de otimização de preços são salvos e versionados automaticamente como artefatos.
+### 1. MLflow Tracking UI & Seleção de Modelo com Rigor
+Acesse 👉 **[http://localhost:5001](http://localhost:5001)** para verificar o painel de experimentos. Toda vez que o pipeline é retreinado via Airflow:
+* Um run pai "pricing_training" é criado com **nested runs por candidato** (baseline de mediana por produto, Random Forest, HistGradientBoosting com restrição de monotonicidade).
+* Cada candidato registra métricas de **holdout temporal** (WAPE, MAE, RMSE, R²) e de **TimeSeriesSplit CV** (média ± desvio).
+* O campeão passa por um **gate de validade econômica**: só é elegível se ≥80% das curvas preço→demanda forem não-crescentes — o resultado (incluindo candidatos reprovados) fica auditável em `pricing_metadata.json` e na página **MLOps: Precificação** do portal.
+* O modelo campeão é registrado no MLflow Model Registry como `pricing_champion`.
 
 ### 2. Linhagem dbt Dinâmica (Lineage Graph)
 Acesse a página **Catálogo Data Mesh** no portal React para visualizar o grafo de dependências compilado em tempo real a partir de `manifest.json` (endpoint `GET /api/v1/lineage`). O portal renderiza os fluxos de dados de Staging, Dimensões, Fatos e ML Features em um grafo SVG com cores por camada.
