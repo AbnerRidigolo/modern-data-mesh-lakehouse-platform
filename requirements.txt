@@ -32,3 +32,6 @@ python-multipart==0.0.32
 prometheus-fastapi-instrumentator==7.0.0
 anthropic==0.117.0
 pyyaml==6.0.2
+
+# Streaming (Redpanda / Kafka-compatible broker)
+kafka-python==2.0.2

@@ -19,6 +19,8 @@ resources:
   - redis.yaml
   - minio.yaml
   - qdrant.yaml
+  # Streaming tier (Redpanda + producer/consumer)
+  - redpanda.yaml
   # App tier
   - mlflow.yaml
   - airflow.yaml
