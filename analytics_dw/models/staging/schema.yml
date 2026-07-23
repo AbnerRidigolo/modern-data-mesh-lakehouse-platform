@@ -39,3 +39,25 @@ models:
           - not_null
           - accepted_values:
               values: ['COMPLETED', 'PENDING', 'CANCELLED']
+
+  - name: stg_marketing
+    columns:
+      - name: event_id
+        tests:
+          - not_null
+          - unique
+      - name: channel
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Google Ads', 'Meta Ads', 'Email', 'Influencer']
+      - name: spend
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+      - name: clicks
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0

@@ -8,9 +8,10 @@ def generate_data():
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     cust_dir = os.path.join(base_dir, "storage", "raw", "customers_data")
     sales_dir = os.path.join(base_dir, "storage", "raw", "sales_data")
+    mkt_dir = os.path.join(base_dir, "storage", "raw", "marketing_data")
 
     # Clean previous raw directories to generate fresh data
-    for d in [cust_dir, sales_dir]:
+    for d in [cust_dir, sales_dir, mkt_dir]:
         if os.path.exists(d):
             for f in os.listdir(d):
                 os.remove(os.path.join(d, f))
@@ -129,7 +130,66 @@ def generate_data():
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(invalid_sales, f, indent=2)
 
-    print(f"Massa de dados históricos gerada: {len(customers)} clientes, {sale_id_counter - 5001} transações de vendas.")
+    # 3. Generate Marketing campaign events (spend/impressions/clicks by channel & category)
+    channels = ["Google Ads", "Meta Ads", "Email", "Influencer"]
+    # Cada categoria tem uma campanha guarda-chuva; o gasto é a alavanca de aquisição
+    category_campaigns = {
+        "Periféricos": "Produtividade Ultrawide",
+        "Acessórios": "Setup Ergonômico",
+        "Áudio": "Imersão Sonora",
+        "Educação": "Carreira em Dados",
+    }
+    # CPM (custo por mil impressões) e CTR base por canal — realismo de funil
+    channel_profile = {
+        "Google Ads": {"cpm": 22.0, "ctr": 0.045},
+        "Meta Ads": {"cpm": 14.0, "ctr": 0.030},
+        "Email": {"cpm": 3.0, "ctr": 0.090},
+        "Influencer": {"cpm": 30.0, "ctr": 0.020},
+    }
+
+    mkt_event_id = 700001
+    for day_offset in range(180, -1, -1):
+        target_date = datetime.now() - timedelta(days=day_offset)
+        daily_events = []
+        for category, campaign in category_campaigns.items():
+            # 1-3 canais ativos por categoria por dia
+            active = random.sample(channels, k=random.randint(1, 3))
+            for channel in active:
+                prof = channel_profile[channel]
+                spend = round(random.uniform(80, 900), 2)
+                impressions = int((spend / prof["cpm"]) * 1000 * random.uniform(0.85, 1.15))
+                clicks = int(impressions * prof["ctr"] * random.uniform(0.7, 1.3))
+                clicks = min(clicks, impressions)  # invariante do contrato
+                daily_events.append({
+                    "event_id": mkt_event_id,
+                    "campaign": campaign,
+                    "channel": channel,
+                    "category": category,
+                    "spend": spend,
+                    "impressions": impressions,
+                    "clicks": clicks,
+                    "event_date": target_date.replace(hour=random.randint(0, 23), minute=0, second=0).isoformat(),
+                })
+                mkt_event_id += 1
+        if daily_events:
+            fp = os.path.join(mkt_dir, f"marketing_{target_date.strftime('%Y-%m-%d')}.json")
+            with open(fp, "w", encoding="utf-8") as f:
+                json.dump(daily_events, f, indent=2)
+
+    # 2 eventos inválidos para o teste de quarentena (canal inválido; cliques > impressões)
+    invalid_events = [
+        {"event_id": 799991, "campaign": "Black Friday", "channel": "TikTok Ads", "category": "Áudio",
+         "spend": 500.0, "impressions": 10000, "clicks": 300, "event_date": datetime.now().isoformat()},
+        {"event_id": 799992, "campaign": "Retargeting", "channel": "Meta Ads", "category": "Acessórios",
+         "spend": 200.0, "impressions": 100, "clicks": 500, "event_date": datetime.now().isoformat()},
+    ]
+    with open(os.path.join(mkt_dir, "marketing_invalid.json"), "w", encoding="utf-8") as f:
+        json.dump(invalid_events, f, indent=2)
+
+    print(
+        f"Massa de dados históricos gerada: {len(customers)} clientes, "
+        f"{sale_id_counter - 5001} transações de vendas, {mkt_event_id - 700001} eventos de marketing."
+    )
 
 if __name__ == "__main__":
     generate_data()
