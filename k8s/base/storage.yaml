@@ -1,0 +1,17 @@
+# Volume compartilhado da plataforma (/storage): DuckDB analítico, model
+# registry, relatórios de Data Quality, backend do MLflow, artefatos.
+#
+# É montado por api, mlflow, airflow-webserver e airflow-scheduler — daí o
+# ReadWriteMany. Em cluster de nó único (kind/minikube) o provisionador
+# hostPath atende RWX; em cluster multi-nó use um provisionador RWX real
+# (NFS, CephFS, EFS, Azure Files) — ver k8s/README.md.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: platform-storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi

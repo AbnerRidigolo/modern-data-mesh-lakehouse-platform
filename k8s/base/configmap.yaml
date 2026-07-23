@@ -1,0 +1,41 @@
+# Configuração NÃO sensível da plataforma. Segredos ficam em Secret (ver secret.example.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-config
+data:
+  # Serviço da API (DaaS)
+  DB_PATH: "/code/storage/analytics.duckdb"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  QDRANT_HOST: "qdrant"
+  QDRANT_PORT: "6333"
+  MINIO_ENDPOINT_URL: "http://minio:9000"
+  AWS_ENDPOINT_URL: "http://minio:9000"
+  AWS_ALLOW_HTTP: "true"
+  MINIO_ENDPOINT: "minio:9000"
+  MLFLOW_TRACKING_URI: "http://mlflow:5000"
+  COPILOT_MODEL: "claude-opus-4-8"
+  # Origens permitidas no CORS (Ingress serve frontend e API sob o mesmo host)
+  FRONTEND_ORIGINS: "http://data-mesh.local,http://localhost"
+---
+# Configuração comum do Airflow (executor local + conexão ao Postgres).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-config
+data:
+  AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
+  AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+  AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: "10"
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@postgres:5432/airflow"
+  PYTHONPATH: "/opt/airflow"
+  MINIO_ENDPOINT_URL: "http://minio:9000"
+  AWS_ENDPOINT_URL: "http://minio:9000"
+  AWS_ALLOW_HTTP: "true"
+  MINIO_ENDPOINT: "minio:9000"
+  MLFLOW_TRACKING_URI: "http://mlflow:5000"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  QDRANT_HOST: "qdrant"
+  QDRANT_PORT: "6333"

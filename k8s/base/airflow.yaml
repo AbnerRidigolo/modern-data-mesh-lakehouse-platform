@@ -1,0 +1,165 @@
+# Airflow: Job de inicialização (migração do DB + criação do usuário admin),
+# webserver e scheduler. Todos usam a imagem custom (raiz do repo) que já traz
+# dags/domains/analytics_dw embutidos e as libs do pipeline.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: airflow-init
+  labels:
+    app.kubernetes.io/name: airflow
+    app.kubernetes.io/component: init
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: airflow
+        app.kubernetes.io/component: init
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsUser: 0             # o init do Airflow precisa de root p/ criar o usuário
+      containers:
+        - name: airflow-init
+          image: data-mesh/airflow:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: airflow-config }
+          env:
+            - name: _AIRFLOW_DB_MIGRATE
+              value: "true"
+            - name: _AIRFLOW_WWW_USER_CREATE
+              value: "true"
+            - name: _AIRFLOW_WWW_USER_USERNAME
+              value: "airflow"
+            - name: _AIRFLOW_WWW_USER_PASSWORD
+              value: "airflow"
+          command: ["bash", "-c"]
+          args:
+            - |
+              airflow db migrate && \
+              airflow users create --username airflow --password airflow \
+                --firstname Admin --lastname User --role Admin --email info@example.com || true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-webserver
+  labels:
+    app.kubernetes.io/name: airflow
+spec:
+  selector:
+    app.kubernetes.io/name: airflow
+    app.kubernetes.io/component: webserver
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-webserver
+  labels:
+    app.kubernetes.io/name: airflow
+    app.kubernetes.io/component: webserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: airflow
+      app.kubernetes.io/component: webserver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: airflow
+        app.kubernetes.io/component: webserver
+    spec:
+      containers:
+        - name: webserver
+          image: data-mesh/airflow:latest
+          imagePullPolicy: IfNotPresent
+          command: ["airflow", "webserver"]
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef: { name: airflow-config }
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: platform-secrets, key: AWS_ACCESS_KEY_ID }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: platform-secrets, key: AWS_SECRET_ACCESS_KEY }
+          volumeMounts:
+            - name: storage
+              mountPath: /opt/airflow/storage
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            requests: { cpu: "250m", memory: "768Mi" }
+            limits: { cpu: "1", memory: "1536Mi" }
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: platform-storage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+  labels:
+    app.kubernetes.io/name: airflow
+    app.kubernetes.io/component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: airflow
+      app.kubernetes.io/component: scheduler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: airflow
+        app.kubernetes.io/component: scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: data-mesh/airflow:latest
+          imagePullPolicy: IfNotPresent
+          command: ["airflow", "scheduler"]
+          envFrom:
+            - configMapRef: { name: airflow-config }
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: platform-secrets, key: AWS_ACCESS_KEY_ID }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: platform-secrets, key: AWS_SECRET_ACCESS_KEY }
+          volumeMounts:
+            - name: storage
+              mountPath: /opt/airflow/storage
+          livenessProbe:
+            exec:
+              command: ["bash", "-c", "airflow jobs check --job-type SchedulerJob --hostname $(hostname)"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 20
+          resources:
+            requests: { cpu: "250m", memory: "768Mi" }
+            limits: { cpu: "1", memory: "1536Mi" }
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: platform-storage

@@ -32,3 +32,10 @@ RUN pip install --no-cache-dir \
     email-validator==2.3.0 \
     qdrant-client==1.7.3 \
     fastembed==0.2.2
+
+# Bake the pipeline code into the image so it is self-contained on Kubernetes
+# (Airflow has no bind mounts there). In docker-compose the same paths are
+# bind-mounted, which shadows these copies for live local development.
+COPY --chown=airflow:root dags/ /opt/airflow/dags/
+COPY --chown=airflow:root domains/ /opt/airflow/domains/
+COPY --chown=airflow:root analytics_dw/ /opt/airflow/analytics_dw/

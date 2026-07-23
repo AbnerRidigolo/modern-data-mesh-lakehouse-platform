@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Overlay de DESENVOLVIMENTO: réplica única, recursos enxutos, imagens :dev.
+# Ideal para kind/minikube em uma máquina.
+
+resources:
+  - ../../base
+
+images:
+  - name: data-mesh/api
+    newTag: dev
+  - name: data-mesh/frontend
+    newTag: dev
+  - name: data-mesh/airflow
+    newTag: dev
+
+patches:
+  # Uma réplica de cada serviço stateless em dev
+  - target:
+      kind: Deployment
+      name: api
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: Deployment
+      name: frontend
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  # HPA começa em 1 réplica em dev
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: api
+    patch: |
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 3

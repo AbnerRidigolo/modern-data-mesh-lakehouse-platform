@@ -25,7 +25,8 @@ A plataforma foi desenhada seguindo o ciclo de vida clássico da engenharia de d
 | **Gerenciamento de dados** | Catálogo de domínios com contratos documentados, quarentena auditável, lineage dbt |
 | **DataOps** | CI GitHub Actions (lint ruff + pytest backend + typecheck/build frontend), testes dbt + dbt-expectations, testes unitários do DQ Engine, métricas Prometheus em `/metrics` |
 | **Arquitetura de dados** | Data Mesh (domínios donos dos seus produtos), Lakehouse em camadas, Star Schema |
-| **Orquestração** | Apache Airflow com DAG unificada e dependências explícitas entre ingestão, DW, ML, vetores e DQ |
+| **Orquestração** | Apache Airflow com DAG unificada e dependências explícitas entre ingestão, DW, ML, vetores, DQ e feature store |
+| **Infraestrutura / DevOps** ☸️ | Deploy em **Kubernetes** via Kustomize (base + overlays dev/prod): StatefulSets + PVC para os stores, volume RWX compartilhado, probes, resource limits, **HPA** na API, Ingress e segregação ConfigMap/Secret — além do docker-compose para uso local |
 | **Engenharia de software** | Backend modular (routers FastAPI + módulos compartilhados), frontend tipado (TypeScript), paths centralizados, linting ruff, testes automatizados |
 
 ---
@@ -126,9 +127,10 @@ graph TD
 ├── analytics_dw/             # Projeto dbt (staging, marts, feature views, snapshots SCD2, testes)
 │   └── snapshots/            # customers_snapshot: historização SCD Type 2
 ├── dags/                     # DAGs do Apache Airflow
-├── tests/                    # Testes pytest (contratos + API + endpoints + DQ engine)
+├── tests/                    # Testes pytest (contratos + API + endpoints + DQ + ML + feature store)
+├── k8s/                      # Deploy Kubernetes (Kustomize base + overlays dev/prod) + Makefile
 ├── ruff.toml                 # Configuração de linting Python
-├── docker-compose.yml        # Infraestrutura completa (9 serviços)
+├── docker-compose.yml        # Infraestrutura completa (10 serviços) para uso local
 └── .github/workflows/ci.yml  # CI: lint (ruff) + backend-test (pytest) + frontend-build (tsc/vite)
 ```
 
@@ -353,8 +355,30 @@ Para qualquer ambiente além do uso local, defina `JWT_SECRET_KEY` e `ADMIN_PASS
 O workflow `.github/workflows/ci.yml` roda em cada push/PR para `main` com três jobs paralelos:
 
 * **`lint`**: `ruff check .` — estilo, imports, bugs prováveis (flake8-bugbear) e sintaxe moderna (pyupgrade).
-* **`backend-test`**: Python 3.11 + `pip install -r requirements.txt` + `pytest tests/` (contratos, auth JWT, endpoints e testes unitários do Data Quality Engine).
+* **`backend-test`**: Python 3.11 + `pip install -r requirements.txt` + `pytest tests/` (contratos, auth JWT, endpoints, Data Quality, pipeline de ML e feature store).
 * **`frontend-build`**: Node 20 + `npm ci` + `npm run build` (typecheck TypeScript + build Vite).
+
+---
+
+## ☸️ Deploy em Kubernetes
+
+Além do docker-compose (uso local), a plataforma pode ser implantada em Kubernetes via **Kustomize** (`k8s/`), reproduzindo a topologia com práticas de produção:
+
+* **StatefulSets + PVC** para os stores com estado (Postgres, Redis, MinIO, Qdrant) e um **volume `ReadWriteMany` compartilhado** (`/storage`: DuckDB, model registry, MLflow, relatórios de DQ) montado por API, MLflow e Airflow.
+* **Deployments** para API, frontend, MLflow e Airflow (webserver + scheduler), com o init do Airflow como **`Job`**.
+* **Probes** de liveness/readiness em todos os serviços, **requests/limits** de recursos, **`HorizontalPodAutoscaler`** na API (CPU), **`Ingress`** com dois hosts (portal + API) e **segregação ConfigMap/Secret** (segredos nunca no código).
+* **Overlays `dev`/`prod`**: dev com réplica única e imagens `:dev`; prod com 3 réplicas, HPA de 3→10, limites maiores, imagens pinadas por versão e Ingress TLS (cert-manager).
+
+```bash
+# renderiza e valida sem cluster
+kubectl kustomize k8s/overlays/dev
+
+# build + load das imagens e deploy (kind/minikube)
+make -C k8s build load deploy
+kubectl -n data-mesh get pods,svc,hpa,ingress
+```
+
+Guia completo (build das imagens com `VITE_API_URL`, ingress controller, metrics-server, `/etc/hosts`, injeção da chave do Copilot): **[`k8s/README.md`](k8s/README.md)**.
 
 ---
 

@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+spec:
+  selector:
+    app.kubernetes.io/name: api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+    spec:
+      containers:
+        - name: api
+          image: data-mesh/api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef: { name: platform-config }
+          env:
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef: { name: platform-secrets, key: JWT_SECRET_KEY }
+            - name: ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef: { name: platform-secrets, key: ADMIN_USERNAME }
+            - name: ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef: { name: platform-secrets, key: ADMIN_PASSWORD_HASH }
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: platform-secrets, key: AWS_ACCESS_KEY_ID }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: platform-secrets, key: AWS_SECRET_ACCESS_KEY }
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef: { name: platform-secrets, key: ANTHROPIC_API_KEY }
+          volumeMounts:
+            - name: storage
+              mountPath: /code/storage
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "100m", memory: "512Mi" }
+            limits: { cpu: "1", memory: "1Gi" }
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: platform-storage
